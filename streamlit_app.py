@@ -440,7 +440,7 @@ def main():
             df_hal_depot = final_df.copy()
 
             # Remplacer les valeurs vides ou NaN pour une meilleure lisibilité
-            df_hal_depot['type_dépôt_si_trouvé'] = df_hal_depot['type_dépôt_si_trouvé'].fillna('Absent de HAL')
+            df_hal_depot['type_dépôt_si_trouvé'].fillna('Absent de HAL', inplace=True)
             
             # Compter la répartition des types de dépôt
             depot_status_counts = df_hal_depot['type_dépôt_si_trouvé'].value_counts().reset_index()
