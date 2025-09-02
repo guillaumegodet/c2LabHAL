@@ -433,6 +433,31 @@ def main():
                 
         else:
             st.warning("Les colonnes nécessaires pour les visualisations (Action, oa_status, Date) sont manquantes.")
+        # --- Graphique 3 : Répartition par type de dépôt HAL ---
+            st.subheader("Répartition par type de dépôt HAL")
+
+            # Utiliser la colonne type_dépôt_si_trouvé pour le comptage
+            # Créer une copie pour éviter les problèmes de chaînage
+            df_hal_depot = final_df.copy()
+
+            # Remplacer les valeurs vides ou NaN pour une meilleure lisibilité
+            df_hal_depot['type_dépôt_si_trouvé'] = df_hal_depot['type_dépôt_si_trouvé'].fillna('Absent de HAL')
+            
+            # Compter la répartition des types de dépôt
+            depot_status_counts = df_hal_depot['type_dépôt_si_trouvé'].value_counts().reset_index()
+            depot_status_counts.columns = ['Statut HAL', 'Count']
+
+            if not depot_status_counts.empty:
+                # Créer un camembert avec Plotly
+                fig_pie_hal_depot = go.Figure(data=[go.Pie(
+                    labels=depot_status_counts['Statut HAL'],
+                    values=depot_status_counts['Count'],
+                    hole=.3
+                )])
+                fig_pie_hal_depot.update_layout(title_text='Statut des dépôts dans HAL')
+                st.plotly_chart(fig_pie_hal_depot, use_container_width=True)
+            else:
+                st.warning("Pas de données sur le statut de dépôt HAL pour la visualisation.")
             
         progress_bar.progress(100)
         progress_text_area.success("🎉 Traitement terminé avec succès !")
