@@ -344,6 +344,20 @@ def main():
                 file_name=output_filename,
                 mime="text/csv"
             )
+            st.info("""
+            **Si vous utilisez Excel, en cas de problème de lecture du fichier :**
+            Utilisez l'assistant d'importation de texte d'Excel.
+            - **Ouvrez Excel** et créez une nouvelle feuille de calcul vierge.
+            - Allez dans l'onglet **Données** (Data).
+            - Dans le groupe **Obtenir et transformer des données** (Get & Transform Data), cliquez sur **À partir d'un fichier texte/CSV** (From Text/CSV).
+            - Sélectionnez le fichier CSV que vous avez téléchargé et cliquez sur **Importer**.
+            
+            Une fenêtre d'aperçu s'ouvrira. Assurez-vous que les paramètres sont corrects :
+            - **Origine du fichier** (File Origin) ou **Encodage** : Sélectionnez **`65001 : Unicode (UTF-8)`**.
+            - **Séparateur** (Delimiter) : Assurez-vous que **`Virgule`** (Comma) est sélectionné.
+            - Cliquez sur **Charger** (Load).
+            """)
+           
         progress_bar.progress(100)
         progress_text_area.success("🎉 Traitement terminé avec succès !")
 
