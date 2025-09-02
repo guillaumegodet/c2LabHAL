@@ -514,7 +514,7 @@ def add_permissions(row_series_data):
         elif embargo_months_val > 0:
             embargo_display_str = f"{embargo_months_val} mois d'embargo"
     
-    if version_allowed.lower() in ["publishedversion", "acceptedversion"]:
+    if str(version_allowed).lower() in ["publishedversion", "acceptedversion"]:
         return f"Version autorisée (oa.works): {version_allowed} ; Licence: {licence_info} ; Embargo: {embargo_display_str}"
     
     return f"Info permission (oa.works): {version_allowed} ; {licence_info} ; {embargo_display_str}"
