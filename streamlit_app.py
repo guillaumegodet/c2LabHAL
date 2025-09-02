@@ -2,6 +2,8 @@ import os
 import streamlit as st
 import pandas as pd
 import io
+import altair as alt
+import plotly.graph_objects as go
 # Supprimé: requests, json, metapub, regex, unidecode, unicodedata, difflib, langdetect, tqdm, concurrent
 # Ces imports sont maintenant dans utils.py
 
@@ -332,7 +334,62 @@ def main():
         st.success("Déduction des actions et traitement des auteurs terminés.")
         
         st.dataframe(final_df)
+        
+# --- Bloc de Visualisations ---
+        st.header("📊 Visualisations des données")
+        
+        # S'assurer que les données nécessaires existent
+        if 'Action' in final_df.columns and 'oa_status' in final_df.columns and 'Date' in final_df.columns:
+            
+            # --- Graphique 1 : Évolution du nombre de publications par année ---
+            st.subheader("Nombre de publications par année")
+            
+            # Convertir la colonne 'Date' en type datetime et extraire l'année
+            # Utiliser une copie pour éviter le SettingWithCopyWarning
+            df_for_viz = final_df.copy()
+            df_for_viz['Year'] = pd.to_datetime(df_for_viz['Date'], errors='coerce').dt.year
+            
+            # Filtrer les années valides et compter
+            publications_by_year = df_for_viz.dropna(subset=['Year']).groupby('Year').size().reset_index(name='Count')
+            
+            # Créer le graphique avec Altair pour l'interactivité
+            if not publications_by_year.empty:
+                import altair as alt
+                
+                chart_year = alt.Chart(publications_by_year).mark_bar().encode(
+                    x=alt.X('Year:O', title='Année'),
+                    y=alt.Y('Count:Q', title='Nombre de publications'),
+                    tooltip=[
+                        alt.Tooltip('Year:O', title='Année'),
+                        alt.Tooltip('Count:Q', title='Nombre de publications')
+                    ]
+                ).properties(
+                    title='Évolution du nombre de publications par année'
+                )
+                
+                st.altair_chart(chart_year, use_container_width=True)
+            else:
+                st.warning("Pas de données de publication par année pour la visualisation.")
 
+            # --- Graphique 2 : Répartition des publications par statut OA (Unpaywall) ---
+            st.subheader("Répartition par statut Open Access")
+            
+            # Compter la répartition des statuts OA
+            oa_status_counts = final_df['oa_status'].value_counts().reset_index()
+            oa_status_counts.columns = ['Statut OA', 'Count']
+            
+            if not oa_status_counts.empty:
+                # Créer un camembert avec Plotly pour l'interactivité
+                import plotly.graph_objects as go
+                fig_pie = go.Figure(data=[go.Pie(labels=oa_status_counts['Statut OA'], values=oa_status_counts['Count'], hole=.3)])
+                fig_pie.update_layout(title_text='Répartition par statut Open Access')
+                st.plotly_chart(fig_pie, use_container_width=True)
+            else:
+                st.warning("Pas de données de statut Open Access pour la visualisation.")
+                
+        else:
+            st.warning("Les colonnes nécessaires pour les visualisations (Action, oa_status, Date) sont manquantes.")
+       
         if not final_df.empty:
             csv_export = final_df.to_csv(index=False, encoding='utf-8-sig')
             filename_coll_part = str(collection_a_chercher).replace(" ", "_") if collection_a_chercher else "HAL_global"
