@@ -345,7 +345,7 @@ def main():
                 mime="text/csv"
             )
             st.info("""
-            **Si vous utilisez Excel, en cas de problème de lecture du fichier :**
+            **Si vous utilisez Excel, en cas de problème de lecture du fichier .csv :**
             Utilisez l'assistant d'importation de texte d'Excel.
             - **Ouvrez Excel** et créez une nouvelle feuille de calcul vierge.
             - Allez dans l'onglet **Données** (Data).
@@ -355,7 +355,7 @@ def main():
             Une fenêtre d'aperçu s'ouvrira. Assurez-vous que les paramètres sont corrects :
             - **Origine du fichier** (File Origin) ou **Encodage** : Sélectionnez **`65001 : Unicode (UTF-8)`**.
             - **Séparateur** (Delimiter) : Assurez-vous que **`Virgule`** (Comma) est sélectionné.
-            - Cliquez sur **Charger** (Load).
+            - Cliquez sur **Charger** (Load). Excel importera les données correctement, avec les colonnes bien séparées et les caractères spéciaux affichés sans problème.
             """)
            
         progress_bar.progress(100)
