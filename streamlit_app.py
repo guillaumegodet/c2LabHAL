@@ -335,7 +335,34 @@ def main():
         
         st.dataframe(final_df)
         
-# --- Bloc de Visualisations ---
+
+       
+        if not final_df.empty:
+            csv_export = final_df.to_csv(index=False, encoding='utf-8-sig')
+            filename_coll_part = str(collection_a_chercher).replace(" ", "_") if collection_a_chercher else "HAL_global"
+            output_filename = f"c2LabHAL_resultats_{filename_coll_part}_{start_year}-{end_year}.csv"
+
+            st.download_button(
+                label="📥 Télécharger les résultats en CSV",
+                data=csv_export,
+                file_name=output_filename,
+                mime="text/csv"
+            )
+            st.info("""
+            **Si vous utilisez Excel, en cas de problème de lecture du fichier .csv :**
+            Utilisez l'assistant d'importation de texte d'Excel.
+            - **Ouvrez Excel** et créez une nouvelle feuille de calcul vierge.
+            - Allez dans l'onglet **Données** (Data).
+            - Dans le groupe **Obtenir et transformer des données** (Get & Transform Data), cliquez sur **À partir d'un fichier texte/CSV** (From Text/CSV).
+            - Sélectionnez le fichier CSV que vous avez téléchargé et cliquez sur **Importer**.
+            
+            Une fenêtre d'aperçu s'ouvrira. Assurez-vous que les paramètres sont corrects :
+            - **Origine du fichier** (File Origin) ou **Encodage** : Sélectionnez **`65001 : Unicode (UTF-8)`**.
+            - **Séparateur** (Delimiter) : Assurez-vous que **`Virgule`** (Comma) est sélectionné.
+            - Cliquez sur **Charger** (Load). Excel importera les données correctement, avec les colonnes bien séparées et les caractères spéciaux affichés sans problème.
+            """)
+            
+           # --- Bloc de Visualisations ---
         st.header("📊 Visualisations des données")
         
         # S'assurer que les données nécessaires existent
@@ -377,11 +404,28 @@ def main():
             # Compter la répartition des statuts OA
             oa_status_counts = final_df['oa_status'].value_counts().reset_index()
             oa_status_counts.columns = ['Statut OA', 'Count']
-            
+
             if not oa_status_counts.empty:
-                # Créer un camembert avec Plotly pour l'interactivité
+                # Définir le mapping des couleurs
+                color_map = {
+                    'closed': 'black',
+                    'green': 'green',
+                    'bronze': 'saddlebrown', # Une teinte de marron
+                    'gold': 'gold',
+                    'hybrid': 'gray'
+                }
+                
+                # Créer une liste de couleurs dans le bon ordre en fonction des étiquettes
+                colors = [color_map.get(status.lower(), 'lightgray') for status in oa_status_counts['Statut OA']]
+
+                # Créer un camembert avec Plotly en utilisant les couleurs personnalisées
                 import plotly.graph_objects as go
-                fig_pie = go.Figure(data=[go.Pie(labels=oa_status_counts['Statut OA'], values=oa_status_counts['Count'], hole=.3)])
+                fig_pie = go.Figure(data=[go.Pie(
+                    labels=oa_status_counts['Statut OA'], 
+                    values=oa_status_counts['Count'], 
+                    marker_colors=colors, # Utilisation de la liste de couleurs
+                    hole=.3
+                )])
                 fig_pie.update_layout(title_text='Répartition par statut Open Access')
                 st.plotly_chart(fig_pie, use_container_width=True)
             else:
@@ -389,32 +433,7 @@ def main():
                 
         else:
             st.warning("Les colonnes nécessaires pour les visualisations (Action, oa_status, Date) sont manquantes.")
-       
-        if not final_df.empty:
-            csv_export = final_df.to_csv(index=False, encoding='utf-8-sig')
-            filename_coll_part = str(collection_a_chercher).replace(" ", "_") if collection_a_chercher else "HAL_global"
-            output_filename = f"c2LabHAL_resultats_{filename_coll_part}_{start_year}-{end_year}.csv"
-
-            st.download_button(
-                label="📥 Télécharger les résultats en CSV",
-                data=csv_export,
-                file_name=output_filename,
-                mime="text/csv"
-            )
-            st.info("""
-            **Si vous utilisez Excel, en cas de problème de lecture du fichier .csv :**
-            Utilisez l'assistant d'importation de texte d'Excel.
-            - **Ouvrez Excel** et créez une nouvelle feuille de calcul vierge.
-            - Allez dans l'onglet **Données** (Data).
-            - Dans le groupe **Obtenir et transformer des données** (Get & Transform Data), cliquez sur **À partir d'un fichier texte/CSV** (From Text/CSV).
-            - Sélectionnez le fichier CSV que vous avez téléchargé et cliquez sur **Importer**.
             
-            Une fenêtre d'aperçu s'ouvrira. Assurez-vous que les paramètres sont corrects :
-            - **Origine du fichier** (File Origin) ou **Encodage** : Sélectionnez **`65001 : Unicode (UTF-8)`**.
-            - **Séparateur** (Delimiter) : Assurez-vous que **`Virgule`** (Comma) est sélectionné.
-            - Cliquez sur **Charger** (Load). Excel importera les données correctement, avec les colonnes bien séparées et les caractères spéciaux affichés sans problème.
-            """)
-           
         progress_bar.progress(100)
         progress_text_area.success("🎉 Traitement terminé avec succès !")
 
