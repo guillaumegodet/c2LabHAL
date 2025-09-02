@@ -5,3 +5,4 @@ metapub
 regex 
 unidecode 
 langdetect
+plotly
