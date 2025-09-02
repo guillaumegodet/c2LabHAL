@@ -431,8 +431,7 @@ def main():
             else:
                 st.warning("Pas de données de statut Open Access pour la visualisation.")
                 
-        else:
-            st.warning("Les colonnes nécessaires pour les visualisations (Action, oa_status, Date) sont manquantes.")
+        
         # --- Graphique 3 : Répartition par type de dépôt HAL ---
             st.subheader("Répartition par type de dépôt HAL")
 
@@ -458,6 +457,8 @@ def main():
                 st.plotly_chart(fig_pie_hal_depot, use_container_width=True)
             else:
                 st.warning("Pas de données sur le statut de dépôt HAL pour la visualisation.")
+        else:
+            st.warning("Les colonnes nécessaires pour les visualisations (Action, oa_status, Date) sont manquantes.")                
             
         progress_bar.progress(100)
         progress_text_area.success("🎉 Traitement terminé avec succès !")
