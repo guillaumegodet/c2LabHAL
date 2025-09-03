@@ -431,8 +431,39 @@ def main():
             else:
                 st.warning("Pas de données de statut Open Access pour la visualisation.")
                 
-        
-# --- Graphique 3 : Répartition par type de dépôt HAL ---
+# --- Graphique 3 : Répartition par Statut_HAL ---
+            st.subheader("Répartition par Statut HAL")
+            
+            # Vérifier si la colonne existe pour éviter une KeyError
+            if 'Statut_HAL' in final_df.columns:
+                
+                # Créer une copie du DataFrame pour le graphique
+                df_statut_hal = final_df.copy()
+
+                # Gérer les valeurs manquantes si nécessaire (s'il y en a)
+                df_statut_hal['Statut_HAL'] = df_statut_hal['Statut_HAL'].fillna('Statut Inconnu')
+
+                # Compter la répartition des statuts
+                statut_hal_counts = df_statut_hal['Statut_HAL'].value_counts().reset_index()
+                statut_hal_counts.columns = ['Statut HAL', 'Count']
+                
+                if not statut_hal_counts.empty:
+                    # Créer un camembert avec Plotly
+                    import plotly.graph_objects as go
+                    fig_pie_statut_hal = go.Figure(data=[go.Pie(
+                        labels=statut_hal_counts['Statut HAL'],
+                        values=statut_hal_counts['Count'],
+                        hole=.3
+                    )])
+                    fig_pie_statut_hal.update_layout(title_text='Répartition par Statut HAL')
+                    st.plotly_chart(fig_pie_statut_hal, use_container_width=True)
+                else:
+                    st.warning("Pas de données pour la visualisation du statut HAL.")
+            else:
+                st.warning("La colonne 'Statut_HAL' n'est pas trouvée dans les données.")        
+
+            
+            # --- Graphique 4 : Répartition par type de dépôt HAL ---
             st.subheader("Répartition par type de dépôt HAL")
 
             # Créer une copie du DataFrame
@@ -472,36 +503,8 @@ def main():
                 st.plotly_chart(fig_pie_hal_depot, use_container_width=True)
             else:
                 st.warning("Pas de données sur le statut de dépôt HAL pour la visualisation.")
-            # --- Graphique 4 : Répartition par Statut_HAL ---
-            st.subheader("Répartition par Statut HAL")
+           
             
-            # Vérifier si la colonne existe pour éviter une KeyError
-            if 'Statut_HAL' in final_df.columns:
-                
-                # Créer une copie du DataFrame pour le graphique
-                df_statut_hal = final_df.copy()
-
-                # Gérer les valeurs manquantes si nécessaire (s'il y en a)
-                df_statut_hal['Statut_HAL'] = df_statut_hal['Statut_HAL'].fillna('Statut Inconnu')
-
-                # Compter la répartition des statuts
-                statut_hal_counts = df_statut_hal['Statut_HAL'].value_counts().reset_index()
-                statut_hal_counts.columns = ['Statut HAL', 'Count']
-                
-                if not statut_hal_counts.empty:
-                    # Créer un camembert avec Plotly
-                    import plotly.graph_objects as go
-                    fig_pie_statut_hal = go.Figure(data=[go.Pie(
-                        labels=statut_hal_counts['Statut HAL'],
-                        values=statut_hal_counts['Count'],
-                        hole=.3
-                    )])
-                    fig_pie_statut_hal.update_layout(title_text='Répartition par Statut HAL')
-                    st.plotly_chart(fig_pie_statut_hal, use_container_width=True)
-                else:
-                    st.warning("Pas de données pour la visualisation du statut HAL.")
-            else:
-                st.warning("La colonne 'Statut_HAL' n'est pas trouvée dans les données.")
         else:
             st.warning("Les colonnes nécessaires pour les visualisations (Action, oa_status, Date) sont manquantes.")                
             
