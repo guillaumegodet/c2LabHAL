@@ -463,11 +463,14 @@ def main():
                 st.warning("La colonne 'Statut_HAL' n'est pas trouvée dans les données.")        
 
             
-            # --- Graphique 4 : Répartition par type de dépôt HAL ---
+           # --- Graphique 4 : Répartition par type de dépôt HAL ---
             st.subheader("Répartition par type de dépôt HAL")
 
             # Créer une copie du DataFrame
             df_hal_depot = final_df.copy()
+
+            # S'assurer que les chaînes vides sont traitées comme des valeurs manquantes
+            df_hal_depot['type_dépôt_si_trouvé'].replace('', pd.NA, inplace=True)
 
             # Définir le mapping des noms
             nom_map = {
@@ -479,17 +482,12 @@ def main():
             # Remplacer les valeurs existantes de la colonne en utilisant le dictionnaire
             df_hal_depot['type_dépôt_si_trouvé'] = df_hal_depot['type_dépôt_si_trouvé'].replace(nom_map)
             
-            # Compter la répartition des types de dépôt existants (file, notice, annex)
-            depot_status_counts = df_hal_depot['type_dépôt_si_trouvé'].value_counts().reset_index()
+            # Compter la répartition des types de dépôt, y compris les NaN
+            depot_status_counts = df_hal_depot['type_dépôt_si_trouvé'].value_counts(dropna=False).reset_index()
             depot_status_counts.columns = ['Statut HAL', 'Count']
             
-            # Compter le nombre de publications absentes de HAL (valeurs NaN)
-            absent_count = df_hal_depot['type_dépôt_si_trouvé'].isnull().sum()
-            
-            # Ajouter une nouvelle ligne pour les publications absentes
-            if absent_count > 0:
-                new_row = pd.DataFrame([{'Statut HAL': 'Absent de HAL', 'Count': absent_count}])
-                depot_status_counts = pd.concat([depot_status_counts, new_row], ignore_index=True)
+            # Remplacer l'étiquette pour les valeurs NaN par 'Absent de HAL'
+            depot_status_counts['Statut HAL'] = depot_status_counts['Statut HAL'].fillna('Absent de HAL')
 
             if not depot_status_counts.empty:
                 # Créer un camembert avec Plotly
