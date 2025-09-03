@@ -432,15 +432,23 @@ def main():
                 st.warning("Pas de données de statut Open Access pour la visualisation.")
                 
         
-        # --- Graphique 3 : Répartition par type de dépôt HAL ---
+# --- Graphique 3 : Répartition par type de dépôt HAL ---
             st.subheader("Répartition par type de dépôt HAL")
 
             # Utiliser la colonne type_dépôt_si_trouvé pour le comptage
-            # Créer une copie pour éviter les problèmes de chaînage
             df_hal_depot = final_df.copy()
-
-            # Remplacer les valeurs vides ou NaN pour une meilleure lisibilité
             
+            # Définir le mapping des noms
+            nom_map = {
+                'file': 'Fichier',
+                'notice': 'Notice',
+                'annex': 'Annexe',
+            }
+
+            # Remplacer les valeurs de la colonne en utilisant le dictionnaire
+            df_hal_depot['type_dépôt_si_trouvé'] = df_hal_depot['type_dépôt_si_trouvé'].replace(nom_map)
+            
+            # Remplacer les valeurs vides ou NaN pour une meilleure lisibilité
             df_hal_depot['type_dépôt_si_trouvé'] = df_hal_depot['type_dépôt_si_trouvé'].fillna('Absent de HAL')
             
             # Compter la répartition des types de dépôt
