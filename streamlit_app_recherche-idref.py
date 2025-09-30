@@ -35,7 +35,7 @@ def search_idref_for_person(full_name, min_birth_year, min_death_year):
         return []
 
 st.title("🔗 Alignez votre liste de chercheurs avec IdRef")
-st.markdown("Téléversez un fichier CSV ou Excel contenant une liste de personnes pour récupérer leurs identifiants IdRef. Ce fichier doit contenir a minima une colonne "Nom" et une colonne "Prénom")
+st.markdown("Téléversez un fichier CSV ou Excel contenant une liste de personnes pour récupérer leurs identifiants IdRef. Ce fichier doit contenir a minima une colonne Nom et une colonne Prénom.")
 
 uploaded_file = st.file_uploader(
     "Téléverser votre fichier (.csv, .xlsx)",
