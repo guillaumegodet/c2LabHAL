@@ -3,14 +3,17 @@ import unicodedata
 import string
 from bs4 import BeautifulSoup
 import datetime
-from python_retry import retry
+from tenacity import retry, stop_after_attempt, wait_fixed
 
 NOT_SCIENTIST_TOKEN = ['chanteur', 'dramaturge', 'journalist', 'poete', 'theater', 'theatre']
 
 
-@retry 
+@retry(stop=stop_after_attempt(5), wait=wait_fixed(2)) # 5 tentatives, attente de 2 secondes entre elles
 def get_url(url, params={}, headers={}, timeout=2):
-    return requests.get(url, params=params, headers=headers, timeout=timeout)
+    r = requests.get(url, params=params, headers=headers, timeout=timeout)
+    r.raise_for_status() # Ceci permet à 'tenacity' de savoir quand recommencer
+    return r
+
 
 def strip_accents(w: str) -> str:
     """Normalize accents and stuff in string."""
