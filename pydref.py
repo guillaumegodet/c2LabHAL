@@ -8,7 +8,7 @@ from python_retry import retry
 NOT_SCIENTIST_TOKEN = ['chanteur', 'dramaturge', 'journalist', 'poete', 'theater', 'theatre']
 
 
-@retry(delay=200, tries=5)
+@retry 
 def get_url(url, params={}, headers={}, timeout=2):
     return requests.get(url, params=params, headers=headers, timeout=timeout)
 
