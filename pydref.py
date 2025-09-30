@@ -8,22 +8,20 @@ from tenacity import retry, stop_after_attempt, wait_fixed
 NOT_SCIENTIST_TOKEN = ['chanteur', 'dramaturge', 'journalist', 'poete', 'theater', 'theatre']
 
 
-@retry(stop=stop_after_attempt(5), wait=wait_fixed(2)) # 5 tentatives, attente de 2 secondes entre elles
+@retry(stop=stop_after_attempt(5), wait=wait_fixed(2))
 def get_url(url, params={}, headers={}, timeout=2):
     r = requests.get(url, params=params, headers=headers, timeout=timeout)
-    r.raise_for_status() # Ceci permet à 'tenacity' de savoir quand recommencer
+    r.raise_for_status()
     return r
 
 
 def strip_accents(w: str) -> str:
-    """Normalize accents and stuff in string."""
     return ''.join(
         c for c in unicodedata.normalize('NFD', w)
         if unicodedata.category(c) != 'Mn')
 
 
 def delete_punct(w: str) -> str:
-    """Delete all punctuation in a string."""
     return w.lower().translate(
         str.maketrans(string.punctuation, len(string.punctuation) * ' '))
 
@@ -32,32 +30,11 @@ def normalize(x):
     return strip_accents(delete_punct(x)).lower().strip()
 
 class Pydref(object):
-    """ Wrapper around the PubMed API.
-    """
 
-    def __init__(
-        self: object
-    ) -> None:
-        """ Initialization of the object.
-            Parameters:
-                - None
-            Returns:
-                - None
-        """
-
-        # Store the parameters
+    def __init__(self: object) -> None:
         self.timeout = 2
 
-
     def query(self: object, query: str):
-        """ Method that executes a query agains the idref Solr
-            inserting the PubMed data loader.
-            Parameters:
-                - query     String
-            Returns:
-                - result    solr output
-        """
-
         solr_query = " AND ".join(query.split(' '))
         params = {'q': 'persname_t: ({})'.format(solr_query),
                   'wt': 'json',
@@ -76,8 +53,6 @@ class Pydref(object):
         return {"error": r.text}
     
     def get_idref_notice(self: object, idref: str):
-        """ Method that downloads the xml notice of a given idref
-        """
         try: 
             r = get_url("https://www.idref.fr/{}.xml".format(idref))
             if r.status_code != 200:
@@ -87,14 +62,25 @@ class Pydref(object):
         except:
             print("Error in getting notice {}".format(idref))
             return {}
-    
+
+    def get_alternative_names_from_idref_notice(self: object, soup):
+        """Get all alternative names (formes rejetées, zone 400)."""
+        alt_names = []
+        for datafield in soup.find_all("datafield", {"tag": "400"}):
+            last_name, first_name = "", ""
+            for subfield in datafield.find_all("subfield"):
+                if subfield.attrs['code'] == 'a':
+                    last_name = subfield.text.strip()
+                if subfield.attrs['code'] == 'b':
+                    first_name = subfield.text.strip()
+            full_name = f"{first_name} {last_name}".strip()
+            if full_name:
+                alt_names.append(full_name)
+                alt_names.append(f"{last_name} {first_name}".strip())
+        return alt_names
     
     def get_idref(self: object, query: str, min_birth_year, min_death_year, is_scientific, exact_fullname):
-        """ Method that first permorf a query and then parses the main infos of the results
-        """
-        
         res = self.query(query)
-        
         possible_match = []
 
         for d in res.get('response', {}).get('docs', []):
@@ -111,8 +97,14 @@ class Pydref(object):
                 person['full_name2'] = f"{person['last_name']} {person['first_name']}".strip()
                 exact_fullname = [normalize(person['full_name']), normalize(person['full_name2'])]
 
+                # Ajout des variantes (formes rejetées)
+                alt_names = self.get_alternative_names_from_idref_notice(soup)
+                person['alt_names'] = alt_names
+                for alt in alt_names:
+                    exact_fullname.append(normalize(alt))
+
                 if normalize(query) not in exact_fullname:
-                    print(f'no exact fullname match for {query} vs {exact_fullname}')
+                    print(f'no fullname/variant match for {query} vs {exact_fullname}')
                     continue
                 birth, death = self.get_birth_and_death_date_from_idref_notice(soup)
                 if birth:
@@ -149,10 +141,6 @@ class Pydref(object):
         return possible_match
     
     def identify(self: object, query: str, min_birth_year = 1920, min_death_year = 2005, is_scientific = True, exact_fullname = True):
-        """ Method that try to identify an idref from a simple input
-            Return a match only if the solr engine gives exactly one result
-        """
-        
         all_idref = self.get_idref(query, min_birth_year, min_death_year, is_scientific, exact_fullname)
         if len(all_idref) == 1:
             res = all_idref[0].copy()
@@ -170,11 +158,9 @@ class Pydref(object):
         return {}
 
     def keep_digits(self: object, x: str) -> str:
-        """Extract digits from string."""
         return str("".join([c for c in x if c.isdigit()]).strip())
 
     def valid_idref_date(self: object, x: str):
-        """Keep date only if it is a valid year (YYYY) or a valid YYYYMMDD."""
         if len(x) != len(self.keep_digits(x)):
             return None
         if len(x) not in [4, 8]:
@@ -199,7 +185,6 @@ class Pydref(object):
         return date_str
 
     def get_name_from_idref_notice(self: object, soup):
-        """Get Name from notice."""
         current_name, current_first_name = None, None
         for datafield in soup.find_all("datafield"):
             if (datafield.attrs['tag'] in ['200']):
@@ -212,7 +197,6 @@ class Pydref(object):
         return {"last_name": current_name, "first_name": current_first_name}
 
     def get_birth_and_death_date_from_idref_notice(self: object, soup):
-        """Get birth and death dates from notice."""
         birth, death = None, None
         for datafield in soup.find_all("datafield"):
             if (datafield.attrs['tag'] == '103'):
@@ -224,7 +208,6 @@ class Pydref(object):
         return (birth, death)
 
     def get_identifiers_from_idref_notice(self: object, soup):
-        """Get all other identifiers from notice."""
         identifiers = []
 
         for controlfield in soup.find_all("controlfield"):
@@ -272,7 +255,6 @@ class Pydref(object):
         return identifiers
 
     def get_description_from_idref_notice(self: object, soup):
-        """Get person's description from notice."""
         descriptions = []
         for datafield in soup.find_all("datafield"):
             if (datafield.attrs['tag'] == '340'):
@@ -281,9 +263,7 @@ class Pydref(object):
                         descriptions.append(subfield.text.strip())
         return descriptions
 
-
     def get_gender(self: object, soup):
-        """Get gender from notice."""
         for datafield in soup.find_all("datafield"):
             if (datafield.attrs['tag'] == '120'):
                 for subfield in datafield.findAll("subfield"):
