@@ -4,6 +4,8 @@ import string
 from bs4 import BeautifulSoup
 import datetime
 from tenacity import retry, stop_after_attempt, wait_fixed
+from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 NOT_SCIENTIST_TOKEN = ['chanteur', 'dramaturge', 'journalist', 'poete', 'theater', 'theatre']
 
@@ -38,7 +40,7 @@ class Pydref(object):
         solr_query = " AND ".join(query.split(' '))
         params = {'q': 'persname_t: ({})'.format(solr_query),
                   'wt': 'json',
-                  'fl': '*',
+                  'fl': 'ppn_z,persname_t,ppn_date',  # limiter les champs pour accélérer
                   'sort': 'score desc',
                   'version': '2.2'
                   }
@@ -51,7 +53,8 @@ class Pydref(object):
         if r.status_code == 200 and r.text:
             return r.json()
         return {"error": r.text}
-    
+
+    @lru_cache(maxsize=1024)
     def get_idref_notice(self: object, idref: str):
         try: 
             r = get_url("https://www.idref.fr/{}.xml".format(idref))
@@ -64,7 +67,6 @@ class Pydref(object):
             return {}
 
     def get_alternative_names_from_idref_notice(self: object, soup):
-        """Get all alternative names (formes rejetées, zone 400)."""
         alt_names = []
         for datafield in soup.find_all("datafield", {"tag": "400"}):
             last_name, first_name = "", ""
@@ -78,15 +80,28 @@ class Pydref(object):
                 alt_names.append(full_name)
                 alt_names.append(f"{last_name} {first_name}".strip())
         return alt_names
-    
+
     def get_idref(self: object, query: str, min_birth_year, min_death_year, is_scientific, exact_fullname):
         res = self.query(query)
         possible_match = []
 
+        # Précharger toutes les notices en parallèle
+        ppns = [d['ppn_z'] for d in res.get('response', {}).get('docs', []) if 'ppn_z' in d]
+        notices = {}
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            future_to_ppn = {executor.submit(self.get_idref_notice, ppn): ppn for ppn in ppns}
+            for future in as_completed(future_to_ppn):
+                ppn = future_to_ppn[future]
+                try:
+                    notices[ppn] = future.result()
+                except Exception:
+                    notices[ppn] = {}
+
         for d in res.get('response', {}).get('docs', []):
             if 'ppn_z' in d:
-                person = {'idref' : "idref{}".format(d['ppn_z'])}
-                notice = self.get_idref_notice(d['ppn_z'])
+                ppn = d['ppn_z']
+                person = {'idref' : "idref{}".format(ppn)}
+                notice = notices.get(ppn)
                 if not notice:
                     continue
                 soup = BeautifulSoup(notice, 'lxml')
@@ -97,7 +112,6 @@ class Pydref(object):
                 person['full_name2'] = f"{person['last_name']} {person['first_name']}".strip()
                 exact_fullname = [normalize(person['full_name']), normalize(person['full_name2'])]
 
-                # Ajout des variantes (formes rejetées)
                 alt_names = self.get_alternative_names_from_idref_notice(soup)
                 person['alt_names'] = alt_names
                 for alt in alt_names:
@@ -139,7 +153,7 @@ class Pydref(object):
 
                 possible_match.append(person)
         return possible_match
-    
+
     def identify(self: object, query: str, min_birth_year = 1920, min_death_year = 2005, is_scientific = True, exact_fullname = True):
         all_idref = self.get_idref(query, min_birth_year, min_death_year, is_scientific, exact_fullname)
         if len(all_idref) == 1:
