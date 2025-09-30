@@ -3,7 +3,7 @@ import unicodedata
 import string
 from bs4 import BeautifulSoup
 import datetime
-from retry import retry
+from python_retry import retry
 
 NOT_SCIENTIST_TOKEN = ['chanteur', 'dramaturge', 'journalist', 'poete', 'theater', 'theatre']
 
