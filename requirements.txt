@@ -6,3 +6,6 @@ regex
 unidecode 
 langdetect
 plotly
+beautifulsoup4
+lxml
+python-retry
