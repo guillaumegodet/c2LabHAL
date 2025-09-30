@@ -44,7 +44,7 @@ def _display_long_warning(base_message, item_identifier, item_value, exception_d
         st.warning(full_error_message)
 
 
-def get_scopus_data(api_key, query, max_items=2000):
+def get_scopus_data(api_key, query, max_items=10000):
     found_items_num = -1 
     start_item = 0
     items_per_query = 25 
@@ -96,7 +96,7 @@ def get_scopus_data(api_key, query, max_items=2000):
 
     return results_json[:max_items]
 
-def get_openalex_data(query, max_items=2000):
+def get_openalex_data(query, max_items=10000):
     url = 'https://api.openalex.org/works'
     email = "hal.dbm@listes.u-paris.fr" 
     params = {'filter': query, 'per-page': 200, 'mailto': email} 
@@ -143,7 +143,7 @@ def get_openalex_data(query, max_items=2000):
     return results_json[:max_items] 
 
 
-def get_pubmed_data(query, max_items=1000):
+def get_pubmed_data(query, max_items=10000):
     fetch = PubMedFetcher()
     data = []
     try:
