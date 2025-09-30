@@ -9,3 +9,4 @@ plotly
 beautifulsoup4
 lxml
 python-retry
+openpyxl
