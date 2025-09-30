@@ -65,14 +65,22 @@ class Pydref(object):
                   'version': '2.2'
                   }
  
-        r = get_url(
-                    "https://www.idref.fr/Sru/Solr",
-                    params=params,
-                    headers=None,
-                    timeout=self.timeout)
+        try:
+            r = get_url(
+                        "https://www.idref.fr/Sru/Solr",
+                        params=params,
+                        headers=None,
+                        timeout=self.timeout)
+        except RequestException as e:
+            # CORRECTION: Gère l'exception levée par get_url après échec de retry.
+            print(f"Error in SOLR request for {query}: {e}")
+            # Retourne une structure vide et valide pour éviter le crash en aval
+            return {"response": {"docs": []}}
+            
         if r.status_code == 200 and r.text:
             return r.json()
-        return {"error": r.text}
+        
+        return {"response": {"docs": []}} # Retourne vide si le statut n'est pas 200
  
     def get_idref_notice(self: object, idref: str):
         """ Method that downloads the xml notice of a given idref
@@ -100,7 +108,7 @@ class Pydref(object):
                     if subfield.attrs['code'] in ['a', 'b', 'c']:
                         form.append(subfield.text.strip())
                 if form:
-                    # Normaliser et ajouter la forme complète (Fantoni Isabelle)
+                    # Normaliser et ajouter la forme complète
                     rejected_forms.append(normalize(" ".join(form)))
         return rejected_forms
 
