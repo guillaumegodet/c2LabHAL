@@ -3,17 +3,17 @@ import unicodedata
 import string
 from bs4 import BeautifulSoup
 import datetime
-# CORRECTION 1: Remplacement de 'retry' par 'tenacity' pour une gestion robuste des tentatives
-from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
+# CORRECTION D'IMPORT: Assurez-vous d'avoir bien installé 'tenacity' et non 'python-retry'
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type 
 from requests.exceptions import RequestException
 
 NOT_SCIENTIST_TOKEN = ['chanteur', 'dramaturge', 'journalist', 'poete', 'theater', 'theatre']
 
-# CORRECTION 1: Utilisation de la syntaxe tenacity (5 tentatives max, 2 secondes d'attente)
+# Utilisation de la syntaxe tenacity et gestion des exceptions réseau
 @retry(stop=stop_after_attempt(5), wait=wait_fixed(2), retry=retry_if_exception_type(RequestException))
 def get_url(url, params={}, headers={}, timeout=2):
     r = requests.get(url, params=params, headers=headers, timeout=timeout)
-    # Renvoyer l'exception en cas d'erreur HTTP pour que tenacity relance la tentative
+    # Lève une exception pour que tenacity sache relancer en cas de 4xx/5xx
     r.raise_for_status() 
     return r
 
@@ -57,7 +57,7 @@ class Pydref(object):
         """
 
         solr_query = " AND ".join(query.split(' '))
-        # CORRECTION 2: Changement de l'index de recherche de 'persname_t' à 'ppn_z'
+        # CORRECTION MAJEURE: Changement de l'index de recherche de 'persname_t' à 'ppn_z'
         params = {'q': 'ppn_z: ({})'.format(solr_query), 
                   'wt': 'json',
                   'fl': '*',
@@ -79,7 +79,6 @@ class Pydref(object):
         """
         try: 
             r = get_url("https://www.idref.fr/{}.xml".format(idref))
-            # La fonction get_url gère désormais le statut 4xx/5xx
             return r.text
         except RequestException as e:
             print(f"Error in getting notice {idref} : {e}")
@@ -88,11 +87,12 @@ class Pydref(object):
             print("Error in getting notice {}".format(idref))
             return {}
  
-    # CORRECTION 3: Nouvelle méthode pour extraire les formes rejetées (400)
+    
     def get_rejected_forms_from_idref_notice(self: object, soup):
         """Get rejected forms (400 fields) from notice."""
         rejected_forms = []
         for datafield in soup.find_all("datafield"):
+            # Champ 400 dans la notice IdRef pour les formes rejetées
             if (datafield.attrs['tag'] == '400'):
                 form = []
                 for subfield in datafield.findAll("subfield"):
@@ -100,7 +100,7 @@ class Pydref(object):
                     if subfield.attrs['code'] in ['a', 'b', 'c']:
                         form.append(subfield.text.strip())
                 if form:
-                    # Normaliser et ajouter la forme complète (Nom + Prénom)
+                    # Normaliser et ajouter la forme complète (Fantoni Isabelle)
                     rejected_forms.append(normalize(" ".join(form)))
         return rejected_forms
 
@@ -126,14 +126,14 @@ class Pydref(object):
                 person['full_name'] = f"{person['first_name']} {person['last_name']}".strip()
                 person['full_name2'] = f"{person['last_name']} {person['first_name']}".strip()
                 
-                # --- NOUVEAU: Récupérer les formes rejetées ---
+                # Récupérer les formes rejetées (utilisé pour le filtre strict)
                 rejected_forms = self.get_rejected_forms_from_idref_notice(soup)
 
-                # --- CORRECTION 4: Modification du filtre d'exactitude ---
+                # Modification du filtre d'exactitude
                 normalized_query = normalize(query)
                 exact_fullname_forms = [normalize(person['full_name']), normalize(person['full_name2'])]
 
-                # Le match est exact si la requête correspond à la forme autorisée OU à une forme rejetée.
+                # Le match est exact si la requête correspond à la forme autorisée (200) OU à une forme rejetée (400).
                 is_exact_match = (normalized_query in exact_fullname_forms) or \
                                  (normalized_query in rejected_forms)
 
@@ -141,7 +141,6 @@ class Pydref(object):
                     print(f'no exact match for {query} (ni autorisé {exact_fullname_forms} ni rejeté {rejected_forms})')
                     continue
                 
-                # --- Le reste de la fonction est inchangé ---
                 
                 birth, death = self.get_birth_and_death_date_from_idref_notice(soup)
                 if birth:
