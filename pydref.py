@@ -4,7 +4,7 @@ import string
 from bs4 import BeautifulSoup
 import datetime
 # CORRECTION 1: Remplacement de 'retry' par 'tenacity' pour une gestion robuste des tentatives
-from tenacity import retry, stop_after_attempt, wait_fixed 
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 from requests.exceptions import RequestException
 
 NOT_SCIENTIST_TOKEN = ['chanteur', 'dramaturge', 'journalist', 'poete', 'theater', 'theatre']
