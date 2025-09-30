@@ -34,8 +34,8 @@ def search_idref_for_person(full_name, min_birth_year, min_death_year):
         st.warning(f"Erreur lors de la recherche pour '{full_name}': {e}") 
         return []
 
-st.title("🔗 Outil d'identification IdRef à partir d'un fichier")
-st.markdown("Téléversez un fichier CSV/Excel contenant une liste de personnes pour récupérer leurs identifiants IdRef.")
+st.title("🔗 Alignez votre liste de chercheurs avec IdRef")
+st.markdown("Téléversez un fichier CSV ou Excel contenant une liste de personnes pour récupérer leurs identifiants IdRef. Ce fichier doit contenir a minima une colonne "Nom" et une colonne "Prénom")
 
 uploaded_file = st.file_uploader(
     "Téléverser votre fichier (.csv, .xlsx)",
