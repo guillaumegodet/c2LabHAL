@@ -63,7 +63,7 @@ def add_sidebar_menu():
 # Affichage de la barre latérale
 add_sidebar_menu()
 
-st.title("🔗 Alignez une liste de chercheurs avec IdRef"))
+st.title("🔗 Alignez une liste de chercheurs avec IdRef")
 st.markdown("Téléversez un fichier CSV ou Excel contenant une liste de personnes pour récupérer leurs identifiants IdRef. Ce fichier doit contenir a minima une colonne Nom et une colonne Prénom.")
 
 uploaded_file = st.file_uploader(
