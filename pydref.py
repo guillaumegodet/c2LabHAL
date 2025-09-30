@@ -3,17 +3,19 @@ import unicodedata
 import string
 from bs4 import BeautifulSoup
 import datetime
-from tenacity import retry, stop_after_attempt, wait_fixed
+# CORRECTION 1: Remplacement de 'retry' par 'tenacity' pour une gestion robuste des tentatives
+from tenacity import retry, stop_after_attempt, wait_fixed 
+from requests.exceptions import RequestException
 
 NOT_SCIENTIST_TOKEN = ['chanteur', 'dramaturge', 'journalist', 'poete', 'theater', 'theatre']
 
-
-@retry(stop=stop_after_attempt(5), wait=wait_fixed(2)) # 5 tentatives, attente de 2 secondes entre elles
+# CORRECTION 1: Utilisation de la syntaxe tenacity (5 tentatives max, 2 secondes d'attente)
+@retry(stop=stop_after_attempt(5), wait=wait_fixed(2), retry=retry_if_exception_type(RequestException))
 def get_url(url, params={}, headers={}, timeout=2):
     r = requests.get(url, params=params, headers=headers, timeout=timeout)
-    r.raise_for_status() # Ceci permet à 'tenacity' de savoir quand recommencer
+    # Renvoyer l'exception en cas d'erreur HTTP pour que tenacity relance la tentative
+    r.raise_for_status() 
     return r
-
 
 def strip_accents(w: str) -> str:
     """Normalize accents and stuff in string."""
@@ -50,22 +52,19 @@ class Pydref(object):
 
 
     def query(self: object, query: str):
-        """ Method that executes a query agains the idref Solr
-            inserting the PubMed data loader.
-            Parameters:
-                - query     String
-            Returns:
-                - result    solr output
+        """ Method that executes a query against the idref Solr
+            using the broad index ppn_z to include variants/rejected forms.
         """
 
         solr_query = " AND ".join(query.split(' '))
-        params = {'q': 'persname_t: ({})'.format(solr_query),
+        # CORRECTION 2: Changement de l'index de recherche de 'persname_t' à 'ppn_z'
+        params = {'q': 'ppn_z: ({})'.format(solr_query), 
                   'wt': 'json',
                   'fl': '*',
                   'sort': 'score desc',
                   'version': '2.2'
                   }
-  
+ 
         r = get_url(
                     "https://www.idref.fr/Sru/Solr",
                     params=params,
@@ -74,27 +73,44 @@ class Pydref(object):
         if r.status_code == 200 and r.text:
             return r.json()
         return {"error": r.text}
-    
+ 
     def get_idref_notice(self: object, idref: str):
         """ Method that downloads the xml notice of a given idref
         """
         try: 
             r = get_url("https://www.idref.fr/{}.xml".format(idref))
-            if r.status_code != 200:
-                print("Error in getting notice {} : {}".format(idref, r.text))
-                return {}
+            # La fonction get_url gère désormais le statut 4xx/5xx
             return r.text
-        except:
+        except RequestException as e:
+            print(f"Error in getting notice {idref} : {e}")
+            return {}
+        except Exception:
             print("Error in getting notice {}".format(idref))
             return {}
-    
-    
+ 
+    # CORRECTION 3: Nouvelle méthode pour extraire les formes rejetées (400)
+    def get_rejected_forms_from_idref_notice(self: object, soup):
+        """Get rejected forms (400 fields) from notice."""
+        rejected_forms = []
+        for datafield in soup.find_all("datafield"):
+            if (datafield.attrs['tag'] == '400'):
+                form = []
+                for subfield in datafield.findAll("subfield"):
+                    # On ne prend que les sous-champs A, B, C pour le nom de personne
+                    if subfield.attrs['code'] in ['a', 'b', 'c']:
+                        form.append(subfield.text.strip())
+                if form:
+                    # Normaliser et ajouter la forme complète (Nom + Prénom)
+                    rejected_forms.append(normalize(" ".join(form)))
+        return rejected_forms
+
+
     def get_idref(self: object, query: str, min_birth_year, min_death_year, is_scientific, exact_fullname):
         """ Method that first permorf a query and then parses the main infos of the results
         """
-        
+ 
         res = self.query(query)
-        
+ 
         possible_match = []
 
         for d in res.get('response', {}).get('docs', []):
@@ -109,11 +125,24 @@ class Pydref(object):
                 person['first_name'] = person_name.get("first_name")
                 person['full_name'] = f"{person['first_name']} {person['last_name']}".strip()
                 person['full_name2'] = f"{person['last_name']} {person['first_name']}".strip()
-                exact_fullname = [normalize(person['full_name']), normalize(person['full_name2'])]
+                
+                # --- NOUVEAU: Récupérer les formes rejetées ---
+                rejected_forms = self.get_rejected_forms_from_idref_notice(soup)
 
-                if normalize(query) not in exact_fullname:
-                    print(f'no exact fullname match for {query} vs {exact_fullname}')
+                # --- CORRECTION 4: Modification du filtre d'exactitude ---
+                normalized_query = normalize(query)
+                exact_fullname_forms = [normalize(person['full_name']), normalize(person['full_name2'])]
+
+                # Le match est exact si la requête correspond à la forme autorisée OU à une forme rejetée.
+                is_exact_match = (normalized_query in exact_fullname_forms) or \
+                                 (normalized_query in rejected_forms)
+
+                if exact_fullname and not is_exact_match:
+                    print(f'no exact match for {query} (ni autorisé {exact_fullname_forms} ni rejeté {rejected_forms})')
                     continue
+                
+                # --- Le reste de la fonction est inchangé ---
+                
                 birth, death = self.get_birth_and_death_date_from_idref_notice(soup)
                 if birth:
                     person['birth_date'] = birth
@@ -123,7 +152,7 @@ class Pydref(object):
                 if birth and int(birth[0:4]) < min_birth_year:
                     print(f'skipping birth date {birth}')
                     continue
-                
+                 
                 if death and int(death[0:4]) < min_death_year:
                     print(f'skipping death date {death}')
                     continue
@@ -147,12 +176,12 @@ class Pydref(object):
 
                 possible_match.append(person)
         return possible_match
-    
+     
     def identify(self: object, query: str, min_birth_year = 1920, min_death_year = 2005, is_scientific = True, exact_fullname = True):
         """ Method that try to identify an idref from a simple input
             Return a match only if the solr engine gives exactly one result
         """
-        
+         
         all_idref = self.get_idref(query, min_birth_year, min_death_year, is_scientific, exact_fullname)
         if len(all_idref) == 1:
             res = all_idref[0].copy()
