@@ -20,14 +20,14 @@ except Exception as e:
     st.stop()
 
 
-def search_idref_for_person(full_name, min_birth_year, min_death_year, is_scientific, exact_fullname):
+def search_idref_for_person(full_name, min_birth_year, min_death_year):
     try:
         results = pydref_api.get_idref(
             query=full_name,
             min_birth_year=min_birth_year,
             min_death_year=min_death_year,
-            is_scientific=is_scientific,
-            exact_fullname=exact_fullname
+            is_scientific=True,           # toujours filtrer les non-scientifiques
+            exact_fullname=True            # toujours exiger correspondance exacte (forme retenue ou rejetée)
         )
         return results
     except Exception as e:
@@ -81,13 +81,11 @@ if uploaded_file is not None:
         st.markdown("---")
         st.markdown("**Filtres additionnels**")
         
-        col_date1, col_date2, col_scientific, col_exact = st.columns(4)
+        col_date1, col_date2 = st.columns(2)
         
         current_year = datetime.datetime.now().year
         min_birth_year = col_date1.number_input("Année de naissance min. (YYYY)", value=1920, min_value=1000, max_value=current_year, step=1)
         min_death_year = col_date2.number_input("Année de décès min. (YYYY)", value=2005, min_value=1000, max_value=current_year + 5, step=1)
-        is_scientific = col_scientific.checkbox("Filtrer les non-scientifiques", value=True)
-        exact_fullname = col_exact.checkbox("Exiger une correspondance exacte du nom complet", value=True)
 
         if st.button("Lancer la recherche IdRef", type="primary"):
             if not name_column or not firstname_column:
@@ -109,9 +107,7 @@ if uploaded_file is not None:
                         matches = search_idref_for_person(
                             full_name=full_name,
                             min_birth_year=min_birth_year,
-                            min_death_year=min_death_year,
-                            is_scientific=is_scientific,
-                            exact_fullname=exact_fullname
+                            min_death_year=min_death_year
                         )
                     
                     original_data = row.to_dict()
