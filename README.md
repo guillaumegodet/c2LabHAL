@@ -10,8 +10,9 @@
 ## Fonctionnalités
 
 - **Récupération des données** : Import des principales métadonnées des publications depuis Scopus, OpenAlex et PubMed.
+- **Fusion des lignes en double** : les publications en double sont dédoublonnées via leur DOI.
 - **Comparaison avec HAL** : Comparez les publications récupérées avec la collection HAL du laboratoire. Réutilise le code du [hal_collection_checker](https://gitlab.com/hbretel/hal_collection_checker) d'Henri Bretel.
-- **Fusion des lignes en double** : les publications en double sont dédoublonnées via leur DOI. 
+- **Récupération de métadonnées sur Unpaywall** et l'API permissions d'OA.works pour savoir quelle version de la publication peut être déposée.
 - **Export des résultats** : Téléchargez les résultats sous la forme d'un fichier CSV.
 
 ## Installation

@@ -2,6 +2,8 @@ import os
 import streamlit as st
 import pandas as pd
 import io
+import altair as alt
+import plotly.graph_objects as go
 # Supprimé: requests, json, metapub, regex, unidecode, unicodedata, difflib, langdetect, tqdm, concurrent
 # Ces imports sont maintenant dans utils.py
 
@@ -332,7 +334,9 @@ def main():
         st.success("Déduction des actions et traitement des auteurs terminés.")
         
         st.dataframe(final_df)
+        
 
+       
         if not final_df.empty:
             csv_export = final_df.to_csv(index=False, encoding='utf-8-sig')
             filename_coll_part = str(collection_a_chercher).replace(" ", "_") if collection_a_chercher else "HAL_global"
@@ -344,6 +348,164 @@ def main():
                 file_name=output_filename,
                 mime="text/csv"
             )
+            st.info("""
+            **Si vous utilisez Excel, en cas de problème de lecture du fichier .csv :**
+            Utilisez l'assistant d'importation de texte d'Excel.
+            - **Ouvrez Excel** et créez une nouvelle feuille de calcul vierge.
+            - Allez dans l'onglet **Données** (Data).
+            - Dans le groupe **Obtenir et transformer des données** (Get & Transform Data), cliquez sur **À partir d'un fichier texte/CSV** (From Text/CSV).
+            - Sélectionnez le fichier CSV que vous avez téléchargé et cliquez sur **Importer**.
+            
+            Une fenêtre d'aperçu s'ouvrira. Assurez-vous que les paramètres sont corrects :
+            - **Origine du fichier** (File Origin) ou **Encodage** : Sélectionnez **`65001 : Unicode (UTF-8)`**.
+            - **Séparateur** (Delimiter) : Assurez-vous que **`Virgule`** (Comma) est sélectionné.
+            - Cliquez sur **Charger** (Load). Excel importera les données correctement, avec les colonnes bien séparées et les caractères spéciaux affichés sans problème.
+            """)
+            
+           # --- Bloc de Visualisations ---
+        st.header("📊 Visualisations des données")
+        
+        # S'assurer que les données nécessaires existent
+        if 'Action' in final_df.columns and 'oa_status' in final_df.columns and 'Date' in final_df.columns:
+            
+            # --- Graphique 1 : Évolution du nombre de publications par année ---
+            st.subheader("Nombre de publications par année")
+            
+            # Convertir la colonne 'Date' en type datetime et extraire l'année
+            # Utiliser une copie pour éviter le SettingWithCopyWarning
+            df_for_viz = final_df.copy()
+            df_for_viz['Year'] = pd.to_datetime(df_for_viz['Date'], errors='coerce').dt.year
+            
+            # Filtrer les années valides et compter
+            publications_by_year = df_for_viz.dropna(subset=['Year']).groupby('Year').size().reset_index(name='Count')
+            
+            # Créer le graphique avec Altair pour l'interactivité
+            if not publications_by_year.empty:
+                import altair as alt
+                
+                chart_year = alt.Chart(publications_by_year).mark_bar().encode(
+                    x=alt.X('Year:O', title='Année'),
+                    y=alt.Y('Count:Q', title='Nombre de publications'),
+                    tooltip=[
+                        alt.Tooltip('Year:O', title='Année'),
+                        alt.Tooltip('Count:Q', title='Nombre de publications')
+                    ]
+                ).properties(
+                    title='Évolution du nombre de publications par année'
+                )
+                
+                st.altair_chart(chart_year, use_container_width=True)
+            else:
+                st.warning("Pas de données de publication par année pour la visualisation.")
+
+            # --- Graphique 2 : Répartition des publications par statut OA (Unpaywall) ---
+            st.subheader("Répartition par statut Open Access")
+            
+            # Compter la répartition des statuts OA
+            oa_status_counts = final_df['oa_status'].value_counts().reset_index()
+            oa_status_counts.columns = ['Statut OA', 'Count']
+
+            if not oa_status_counts.empty:
+                # Définir le mapping des couleurs
+                color_map = {
+                    'closed': 'black',
+                    'green': 'green',
+                    'bronze': 'saddlebrown', # Une teinte de marron
+                    'gold': 'gold',
+                    'hybrid': 'gray'
+                }
+                
+                # Créer une liste de couleurs dans le bon ordre en fonction des étiquettes
+                colors = [color_map.get(status.lower(), 'lightgray') for status in oa_status_counts['Statut OA']]
+
+                # Créer un camembert avec Plotly en utilisant les couleurs personnalisées
+                import plotly.graph_objects as go
+                fig_pie = go.Figure(data=[go.Pie(
+                    labels=oa_status_counts['Statut OA'], 
+                    values=oa_status_counts['Count'], 
+                    marker_colors=colors, # Utilisation de la liste de couleurs
+                    hole=.3
+                )])
+                fig_pie.update_layout(title_text='Répartition par statut Open Access')
+                st.plotly_chart(fig_pie, use_container_width=True)
+            else:
+                st.warning("Pas de données de statut Open Access pour la visualisation.")
+                
+# --- Graphique 3 : Répartition par Statut_HAL ---
+            st.subheader("Répartition par Statut HAL")
+            
+            # Vérifier si la colonne existe pour éviter une KeyError
+            if 'Statut_HAL' in final_df.columns:
+                
+                # Créer une copie du DataFrame pour le graphique
+                df_statut_hal = final_df.copy()
+
+                # Gérer les valeurs manquantes si nécessaire (s'il y en a)
+                df_statut_hal['Statut_HAL'] = df_statut_hal['Statut_HAL'].fillna('Statut Inconnu')
+
+                # Compter la répartition des statuts
+                statut_hal_counts = df_statut_hal['Statut_HAL'].value_counts().reset_index()
+                statut_hal_counts.columns = ['Statut HAL', 'Count']
+                
+                if not statut_hal_counts.empty:
+                    # Créer un camembert avec Plotly
+                    import plotly.graph_objects as go
+                    fig_pie_statut_hal = go.Figure(data=[go.Pie(
+                        labels=statut_hal_counts['Statut HAL'],
+                        values=statut_hal_counts['Count'],
+                        hole=.3
+                    )])
+                    fig_pie_statut_hal.update_layout(title_text='Répartition par Statut HAL')
+                    st.plotly_chart(fig_pie_statut_hal, use_container_width=True)
+                else:
+                    st.warning("Pas de données pour la visualisation du statut HAL.")
+            else:
+                st.warning("La colonne 'Statut_HAL' n'est pas trouvée dans les données.")        
+
+            
+           # --- Graphique 4 : Répartition par type de dépôt HAL ---
+            st.subheader("Répartition par type de dépôt HAL")
+
+            # Créer une copie du DataFrame
+            df_hal_depot = final_df.copy()
+
+            # S'assurer que les chaînes vides sont traitées comme des valeurs manquantes
+            df_hal_depot['type_dépôt_si_trouvé'].replace('', pd.NA, inplace=True)
+
+            # Définir le mapping des noms
+            nom_map = {
+                'file': 'Fichier',
+                'notice': 'Notice',
+                'annex': 'Annexe',
+            }
+
+            # Remplacer les valeurs existantes de la colonne en utilisant le dictionnaire
+            df_hal_depot['type_dépôt_si_trouvé'] = df_hal_depot['type_dépôt_si_trouvé'].replace(nom_map)
+            
+            # Compter la répartition des types de dépôt, y compris les NaN
+            depot_status_counts = df_hal_depot['type_dépôt_si_trouvé'].value_counts(dropna=False).reset_index()
+            depot_status_counts.columns = ['Statut HAL', 'Count']
+            
+            # Remplacer l'étiquette pour les valeurs NaN par 'Absent de HAL'
+            depot_status_counts['Statut HAL'] = depot_status_counts['Statut HAL'].fillna('Absent de HAL')
+
+            if not depot_status_counts.empty:
+                # Créer un camembert avec Plotly
+                import plotly.graph_objects as go
+                fig_pie_hal_depot = go.Figure(data=[go.Pie(
+                    labels=depot_status_counts['Statut HAL'],
+                    values=depot_status_counts['Count'],
+                    hole=.3
+                )])
+                fig_pie_hal_depot.update_layout(title_text='Statut des dépôts dans HAL')
+                st.plotly_chart(fig_pie_hal_depot, use_container_width=True)
+            else:
+                st.warning("Pas de données sur le statut de dépôt HAL pour la visualisation.")
+           
+            
+        else:
+            st.warning("Les colonnes nécessaires pour les visualisations (Action, oa_status, Date) sont manquantes.")                
+            
         progress_bar.progress(100)
         progress_text_area.success("🎉 Traitement terminé avec succès !")
 
