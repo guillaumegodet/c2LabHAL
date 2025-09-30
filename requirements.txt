@@ -8,5 +8,5 @@ langdetect
 plotly
 beautifulsoup4
 lxml
-python-retry
+tenacity
 openpyxl
