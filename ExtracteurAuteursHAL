@@ -1,7 +1,9 @@
 # Suite du fichier hal_author_extractor.py, ou dans un app.py séparé
 import streamlit as st
 import pandas as pd
-# Il faut que les fonctions get_authors_data, convert_df soient accessibles ici
+from hal_author_extractor import (
+    get_authors_data, convert_df
+)
 
 # --- Fonctions utilitaires pour Streamlit ---
 @st.cache_data
