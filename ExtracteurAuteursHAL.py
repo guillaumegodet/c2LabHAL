@@ -139,11 +139,20 @@ def get_all_author_forms_data(collection_code, years="", fields_list="docid,full
     
     # 1. Récupérer les publications et les identifiants d'auteurs
     publications = fetch_publications_for_collection(collection_code, years)
+    
+    # --- AJOUT DE DÉBOGAGE 1 ---
+    print(f"DEBUG: Nombre de publications trouvées par l'API: {len(publications)}")
+    # --- FIN DÉBOGAGE 1 ---
+    
     if not publications:
         return pd.DataFrame()
         
     author_ids = extract_author_ids(publications)
 
+    # --- AJOUT DE DÉBOGAGE 2 ---
+    print(f"DEBUG: Nombre d'IDs de formes-auteurs extraits des publications: {len(author_ids)}")
+    # --- FIN DÉBOGAGE 2 ---
+    
     if not author_ids:
         st.info("Aucune forme-auteur trouvée pour la collection et l'année(s) spécifiées.")
         return pd.DataFrame()
