@@ -9,7 +9,7 @@ HAL_SEARCH_API = "http://api.archives-ouvertes.fr/search/"
 # Le point d'entrée de l'API de référence HAL pour les auteurs (pour les détails)
 HAL_AUTHOR_API = "http://api.archives-ouvertes.fr/ref/author/"
 
-# --- Fonctions d'extraction HAL ---
+# --- Fonctions d'extraction HAL (Adaptées à la Collection) ---
 
 def fetch_publications_for_collection(collection_code, years="", fields="structHasAuthId_fs"):
     """
@@ -20,24 +20,23 @@ def fetch_publications_for_collection(collection_code, years="", fields="structH
     rows = 10000  # Nombre maximal de documents par requête
     start = 0
     
-    # Construction des filtres de la requête
+    # La requête utilise le code de collection dans le chemin de l'URL pour un ciblage précis
     query_params = {
         'q': '*:*',
         'wt': 'json',
         'fl': fields,
-        'rows': rows,
-        'fq': f'collCode_s:"{collection_code}"'
+        'rows': rows
     }
 
     if years:
-        query_params['fq'] += f' AND producedDateY_i:{years}'
-
+        query_params['fq'] = f'producedDateY_i:{years}'
+        
     st.toast(f"Démarrage de la récupération pour la collection '{collection_code}' (Année(s): {years if years else 'Toutes'})")
 
     while True:
         query_params['start'] = start
         
-        # L'URL de l'API de recherche HAL (pour la collection, le code est dans le chemin)
+        # URL de l'API de recherche HAL, avec le code de collection dans le chemin
         url = f"{HAL_SEARCH_API}{collection_code}/?{urlencode(query_params)}"
         
         try:
@@ -65,32 +64,36 @@ def fetch_publications_for_collection(collection_code, years="", fields="structH
 
 def extract_author_ids(publications):
     """
-    Extrait les identifiants uniques des auteurs à partir de la liste des publications.
+    Extrait les identifiants uniques des formes-auteurs (docid du référentiel auteur)
+    à partir de la liste des publications.
     """
     author_ids = set()
     for doc in publications:
         authors = doc.get('structHasAuthId_fs', [])
         for author_str in authors:
+            # Le format est typiquement "STRUCTID_HALID_JoinSep_AUTHORID_FacetSep"
             parts = author_str.split('_JoinSep_')
             if len(parts) > 1:
+                # Capture de l'ID de la forme-auteur (ce qui correspond au docid dans /ref/author)
                 author_id_part = parts[1].split('_FacetSep')[0]
                 author_ids.add(author_id_part)
                 
     return list(author_ids)
 
-def fetch_author_details(author_ids, fields="docid,fullName_s,valid_s,halId_s,orcidId_s,firstName_s,lastName_s"):
+def fetch_author_details(author_ids, fields):
     """
-    Récupère les détails de chaque auteur (forme-auteur) à partir de leur docid
+    Récupère les détails de chaque forme-auteur (par son docid)
     en utilisant l'API de référence HAL.
     """
     authors_details = []
     chunk_size = 50 
     total_authors = len(author_ids)
     
-    st.toast(f"Récupération des détails pour {total_authors} auteurs...")
+    st.toast(f"Récupération des détails pour {total_authors} formes-auteurs...")
     
     for i in range(0, total_authors, chunk_size):
         chunk = author_ids[i:i + chunk_size]
+        # Construction de la requête Solr pour les docid
         docid_query = '%22 OR docid:%22'.join(chunk)
         
         query_params = {
@@ -108,6 +111,7 @@ def fetch_author_details(author_ids, fields="docid,fullName_s,valid_s,halId_s,or
             
             docs = data.get('response', {}).get('docs', [])
             
+            # Application de la logique de transformation du statut de validation (comme dans le script JS original)
             for doc in docs:
                 if 'valid_s' in doc:
                     validity_status = doc['valid_s']
@@ -127,36 +131,11 @@ def fetch_author_details(author_ids, fields="docid,fullName_s,valid_s,halId_s,or
             
     return authors_details
 
-def create_unique_authors_dataframe(authors_details):
+def get_all_author_forms_data(collection_code, years="", fields_list="docid,fullName_s,valid_s,halId_s,orcidId_s,firstName_s,lastName_s"):
     """
-    Crée un DataFrame final en sélectionnant la 'meilleure' forme-auteur
-    (VALID > OLD > INCOMING) pour chaque nom complet (`fullName_s`).
+    Fonction principale pour orchestrer l'extraction de TOUTES les formes-auteurs 
+    (sans déduplication) pour une collection.
     """
-    df = pd.DataFrame(authors_details)
-    if df.empty:
-        return df
-
-    # Définir l'ordre de priorité pour le statut de validation
-    validity_order = {
-        "forme auteur principale d'un IdHAL": 1,
-        "forme auteur alternative d'un IdHAL": 2,
-        "forme auteur sans IdHAL associé": 3
-    }
-    
-    df['validity_rank'] = df['valid_s'].apply(lambda x: validity_order.get(x, 4))
-    
-    # Trier par nom complet, puis par rang de validité (le plus petit est le meilleur)
-    df_sorted = df.sort_values(by=['fullName_s', 'validity_rank'], ascending=[True, True])
-    
-    # Garder la meilleure forme-auteur unique pour chaque nom complet
-    df_unique = df_sorted.drop_duplicates(subset=['fullName_s'], keep='first')
-    
-    df_unique = df_unique.drop(columns=['validity_rank']).reset_index(drop=True)
-    
-    return df_unique
-
-def get_authors_data(collection_code, years="", fields_list="docid,fullName_s,valid_s,halId_s,orcidId_s,firstName_s,lastName_s"):
-    """Fonction principale pour orchestrer l'extraction des auteurs."""
     
     # 1. Récupérer les publications et les identifiants d'auteurs
     publications = fetch_publications_for_collection(collection_code, years)
@@ -166,6 +145,7 @@ def get_authors_data(collection_code, years="", fields_list="docid,fullName_s,va
     author_ids = extract_author_ids(publications)
 
     if not author_ids:
+        st.info("Aucune forme-auteur trouvée pour la collection et l'année(s) spécifiées.")
         return pd.DataFrame()
 
     # 2. Récupérer les détails des auteurs (formes-auteurs)
@@ -174,14 +154,14 @@ def get_authors_data(collection_code, years="", fields_list="docid,fullName_s,va
     if not author_details:
         return pd.DataFrame()
 
-    # 3. Créer le DataFrame final unique 
-    df_unique = create_unique_authors_dataframe(author_details)
+    # 3. Créer le DataFrame final (pas de déduplication)
+    df = pd.DataFrame(author_details)
     
     # S'assurer que les colonnes sont dans l'ordre demandé
     requested_fields = fields_list.split(',')
-    final_cols = [col for col in requested_fields if col in df_unique.columns]
+    final_cols = [col for col in requested_fields if col in df.columns]
     
-    return df_unique[final_cols]
+    return df[final_cols]
 
 # --- Fonctions utilitaires pour Streamlit ---
 @st.cache_data
@@ -192,7 +172,7 @@ def convert_df(df):
 
 def build_fields_list(fields_selected):
     """Construit la chaîne de champs à partir des sélections Streamlit."""
-    # Ajoute les champs obligatoires pour la logique de déduplication/affichge
+    # Ajoute les champs obligatoires pour l'affichage
     mandatory_fields = ['docid', 'fullName_s', 'valid_s']
     
     final_fields = list(set(mandatory_fields + fields_selected))
@@ -201,27 +181,29 @@ def build_fields_list(fields_selected):
 
 # --- Application Streamlit ---
 def main():
-    st.set_page_config(page_title="Extracteur Auteurs HAL (Collection)", layout="wide")
-    st.title("Extracteur d'Auteurs par Collection HAL")
-    st.markdown("Utilise l'API HAL pour extraire la liste des **formes-auteurs uniques** d'une collection donnée.")
+    st.set_page_config(page_title="Extracteur Formes-Auteurs HAL (Collection)", layout="wide")
+    st.title("Extracteur de Formes-Auteurs par Collection HAL")
+    st.markdown("Extrait **toutes les formes-auteurs** rattachées aux publications de la collection. Utile pour l'identification des doublons.")
 
-    # Options des champs
+    # Options des champs (similaire aux champs courants du référentiel)
     all_available_fields = [
         'halId_s', 'orcidId_s', 'firstName_s', 'lastName_s', 
-        'email_s', 'structHasAuthId_fs', 'birthDateY_i'
+        'email_s', 'hasCV_bool', 'birthDateY_i'
     ]
     
     with st.sidebar:
         st.header("Paramètres de l'Extraction")
-        collection_code = st.text_input("Code Collection HAL (ex: CRAO, TEL)", value="CRAO")
-        years = st.text_input("Année(s) (ex: 2023, 2020-2023)", value="")
+        collection_code = st.text_input("Code Collection HAL (ex: CRAO, LEMNA)", value="LEMNA")
+        years = st.text_input("Période visée (ex: [2016 TO 2018], 2023)", value="")
         
         st.subheader("Champs d'Auteur à Récupérer")
-        # Sélection des champs.
+        
+        default_fields = ['halId_s', 'orcidId_s', 'firstName_s', 'lastName_s']
+        
         fields_selected = st.multiselect(
-            "Sélectionnez les champs additionnels", 
+            "Sélectionnez les champs additionnels (le 'docid' est l'ID de la forme-auteur)", 
             options=all_available_fields,
-            default=['halId_s', 'orcidId_s', 'firstName_s', 'lastName_s']
+            default=default_fields
         )
         
         # Bouton d'extraction
@@ -233,12 +215,12 @@ def main():
             # Préparer les champs pour l'API
             api_fields = build_fields_list(fields_selected)
             
-            with st.spinner(f"Récupération en cours pour **{collection_code}**..."):
-                # Exécution de la logique d'extraction
-                df_authors = get_authors_data(collection_code, years, api_fields)
+            with st.spinner(f"Récupération en cours pour la collection **{collection_code}**..."):
+                # Exécution de la logique d'extraction sans déduplication
+                df_authors = get_all_author_forms_data(collection_code, years, api_fields)
             
             if df_authors.empty:
-                st.warning("Aucun résultat trouvé pour cette collection ou une erreur est survenue.")
+                st.warning("Aucun résultat trouvé pour cette collection et ces critères.")
             else:
                 st.session_state['df_authors'] = df_authors
                 st.session_state['collection_code'] = collection_code
@@ -251,24 +233,28 @@ def main():
         years = st.session_state['years']
         
         st.subheader(f"Résultats pour Collection : **{collection_code}** ({'Année(s) : **' + years + '**' if years else '**Toutes années**'})")
-        st.info(f"Nombre de formes-auteurs uniques (dédupliquées par nom complet) : **{len(df_authors)}**")
+        
+        # L'affichage des doublons est utile pour repérer les doublons par nom
+        df_display = df_authors.sort_values(by='fullName_s') 
+        
+        st.info(f"Nombre total de **formes-auteurs** trouvées : **{len(df_authors)}**")
+        st.markdown("_Les lignes ayant le même `fullName_s` mais un `docid` (ID de forme-auteur) différent sont des doublons potentiels._")
         
         # Afficher le DataFrame
-        st.dataframe(df_authors, use_container_width=True)
+        st.dataframe(df_display, use_container_width=True)
         
         # Préparer et afficher le bouton de téléchargement CSV
         csv_data = convert_df(df_authors)
-        filename = f'auteurs_uniques_{collection_code}_{years if years else "all"}.csv'
+        filename = f'toutes_formes_auteurs_{collection_code}_{years.replace(" ", "_") if years else "all"}.csv'
         
         st.download_button(
-            label="💾 Télécharger la liste des auteurs (CSV)",
+            label="💾 Télécharger la liste de TOUTES les formes-auteurs (CSV)",
             data=csv_data,
             file_name=filename,
             mime='text/csv',
             key='download_button'
         )
-        st.markdown("_Le séparateur utilisé est le point-virgule (`;`) pour une meilleure compatibilité avec Excel en français._")
-
+        st.markdown("_Le séparateur est le point-virgule (`;`) pour Excel._")
 
 if __name__ == '__main__':
     main()
