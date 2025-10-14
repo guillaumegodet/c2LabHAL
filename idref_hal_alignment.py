@@ -169,107 +169,125 @@ def search_idref_for_person(full_name, min_birth_year, min_death_year):
 # =========================================================
 def fuzzy_merge_file_hal(df_file, df_hal, threshold=85):
     """
-    Fusion floue entre fichier (IdRef) et HAL, basée sur similarité du nom complet.
-    Les colonnes HAL sont préfixées 'HAL_' pour éviter les doublons.
+    Fusion floue entre fichier (IdRef) et HAL avec colonne finale fixe pour éviter doublons.
+    - Renomme une éventuelle colonne 'source' dans le fichier en 'FILE_source' pour éviter conflit.
+    - Préfixe toutes les colonnes HAL par 'HAL_'.
+    - Retourne un DataFrame sans colonnes dupliquées.
     """
     df_file = df_file.copy()
     df_hal = df_hal.copy()
 
-    # Normalisation des noms
-    df_file['norm_first'] = df_file['Prénom'].fillna('').apply(normalize_text)
-    df_file['norm_last'] = df_file['Nom'].fillna('').apply(normalize_text)
-    df_file['norm_full'] = (df_file['norm_first'] + ' ' + df_file['norm_last']).str.strip()
+    # ----- Renommer column 'source' du fichier si elle existe (évite conflit)
+    if 'source' in df_file.columns:
+        df_file = df_file.rename(columns={'source': 'FILE_source'})
 
-    df_hal['norm_first'] = df_hal['Prénom'].fillna('').apply(normalize_text)
-    df_hal['norm_last'] = df_hal['Nom'].fillna('').apply(normalize_text)
-    df_hal['norm_full'] = (
-        df_hal['Nom_Complet'].fillna('').apply(normalize_text)
-        if 'Nom_Complet' in df_hal.columns else
-        (df_hal['norm_first'] + ' ' + df_hal['norm_last']).str.strip()
-    )
+    # ----- Normalisation des noms
+    df_file['norm_first'] = df_file.get('Prénom', '').fillna('').apply(normalize_text)
+    df_file['norm_last']  = df_file.get('Nom', '').fillna('').apply(normalize_text)
+    df_file['norm_full']  = (df_file['norm_first'] + ' ' + df_file['norm_last']).str.strip()
 
-    # Indicateur de lignes déjà appariées
+    df_hal['norm_first'] = df_hal.get('Prénom', '').fillna('').apply(normalize_text)
+    df_hal['norm_last']  = df_hal.get('Nom', '').fillna('').apply(normalize_text)
+    if 'Nom_Complet' in df_hal.columns:
+        df_hal['norm_full'] = df_hal['Nom_Complet'].fillna('').apply(normalize_text)
+    else:
+        df_hal['norm_full'] = (df_hal['norm_first'] + ' ' + df_hal['norm_last']).str.strip()
+
+    # ----- Colonnes de base (fichier) : conserver Nom/Prénom et toute colonne utile sauf norm_*
+    file_cols = [c for c in df_file.columns if not c.startswith('norm_')]
+    # Assurer que Nom et Prénom existent dans file_cols (même si absent dans origine)
+    if 'Nom' not in file_cols:
+        file_cols.insert(0, 'Nom')
+    if 'Prénom' not in file_cols:
+        file_cols.insert(1 if file_cols[0]=='Nom' else 0, 'Prénom')
+
+    # ----- Colonnes HAL à ajouter (brutes), on les préfixera HAL_
+    hal_exclude = {'Nom', 'Prénom', 'norm_first', 'norm_last', 'norm_full', '__matched'}
+    hal_raw_cols = [c for c in df_hal.columns if c not in hal_exclude]
+
+    hal_prefixed_cols = [f"HAL_{c}" for c in hal_raw_cols]
+
+    # ----- Template colonne finale fixe
+    final_cols = list(dict.fromkeys(file_cols + hal_prefixed_cols + ['source', 'match_score']))
+
+    # ----- Marquer matched
     df_hal['__matched'] = False
+
     merged_rows = []
 
+    # ----- Préparer un template dict rempli de None pour homogénéité
+    template = {col: None for col in final_cols}
+
+    # ----- Pour chaque ligne du fichier, chercher le meilleur match HAL
     for f_idx, f_row in df_file.iterrows():
-        f_name = f_row['norm_full']
+        row_dict = template.copy()  # démarre vide, toutes clés présentes
+        # Remplir colonnes fichier
+        for col in file_cols:
+            row_dict[col] = f_row.get(col) if col in f_row.index else None
+
+        f_name = str(f_row.get('norm_full', '')).strip()
         best_score = -1
         best_h_idx = None
 
         if not f_name:
-            merged = {**f_row.to_dict(), 'source': 'Fichier', 'match_score': None}
-            merged_rows.append(merged)
+            row_dict['source'] = 'Fichier'
+            row_dict['match_score'] = None
+            merged_rows.append(row_dict)
             continue
 
+        # Parcourir HAL non appariés
         for h_idx, h_row in df_hal[df_hal['__matched'] == False].iterrows():
-            h_name = h_row['norm_full']
+            h_name = str(h_row.get('norm_full', '')).strip()
             score = similarity_score(f_name, h_name)
             if score > best_score:
                 best_score = score
                 best_h_idx = h_idx
-            if f_name == h_name:
+            if f_name == h_name:  # égalité normalisée -> stop
                 best_score = 100.0
                 best_h_idx = h_idx
                 break
 
         if best_score >= threshold and best_h_idx is not None:
+            # Fusionner : remplir HAL_... et meta
             h_row = df_hal.loc[best_h_idx]
-            merged = {}
-
-            # Ajouter colonnes du fichier
-            for col in df_file.columns:
-                merged[col] = f_row.get(col)
-
-            # Ajouter colonnes HAL (préfixées)
-            for col in df_hal.columns:
-                if col in ['Nom', 'Prénom', 'norm_first', 'norm_last', 'norm_full', '__matched']:
-                    continue
-                merged[f"HAL_{col}"] = h_row.get(col)
-
-            merged['source'] = 'Fichier + HAL'
-            merged['match_score'] = best_score
-            merged_rows.append(merged)
-
+            for i, col in enumerate(hal_raw_cols):
+                pref = f"HAL_{col}"
+                row_dict[pref] = h_row.get(col)
+            row_dict['source'] = 'Fichier + HAL'
+            row_dict['match_score'] = best_score
+            # marquer comme apparié
             df_hal.at[best_h_idx, '__matched'] = True
         else:
-            merged = {col: f_row.get(col) for col in df_file.columns}
-            for col in df_hal.columns:
-                if col in ['Nom', 'Prénom', 'norm_first', 'norm_last', 'norm_full', '__matched']:
-                    continue
-                merged[f"HAL_{col}"] = None
-            merged['source'] = 'Fichier'
-            merged['match_score'] = best_score if best_score >= 0 else None
-            merged_rows.append(merged)
+            # Pas de match : source Fichier, HAL_... restent None
+            row_dict['source'] = 'Fichier'
+            row_dict['match_score'] = best_score if best_score >= 0 else None
 
-    # Ajouter les auteurs HAL non trouvés
-    for h_idx, h_row in df_hal[df_hal['__matched'] == False].iterrows():
-        merged = {}
-        for col in df_file.columns:
-            merged[col] = None
-        for col in df_hal.columns:
-            if col in ['Nom', 'Prénom', 'norm_first', 'norm_last', 'norm_full', '__matched']:
-                continue
-            merged[f"HAL_{col}"] = h_row.get(col)
-        merged['Nom'] = h_row.get('Nom')
-        merged['Prénom'] = h_row.get('Prénom')
-        merged['source'] = 'HAL'
-        merged['match_score'] = None
-        merged_rows.append(merged)
+        merged_rows.append(row_dict)
 
-    # Création du DataFrame final
-    final_df = pd.DataFrame(merged_rows)
+    # ----- Ajouter HAL-only restants
+    remaining = df_hal[df_hal['__matched'] == False]
+    for h_idx, h_row in remaining.iterrows():
+        row_dict = template.copy()
+        # on met Nom/Prénom à partir de HAL (pour visibilité)
+        row_dict['Nom'] = h_row.get('Nom')
+        row_dict['Prénom'] = h_row.get('Prénom')
+        for i, col in enumerate(hal_raw_cols):
+            pref = f"HAL_{col}"
+            row_dict[pref] = h_row.get(col)
+        row_dict['source'] = 'HAL'
+        row_dict['match_score'] = None
+        merged_rows.append(row_dict)
 
-    # Supprimer les doublons de colonnes si apparition accidentelle
-    final_df = final_df.loc[:, ~final_df.columns.duplicated()]
+    # ----- Création DataFrame final sans duplication possible
+    final_df = pd.DataFrame(merged_rows, columns=final_cols)
 
-    # Réorganiser les colonnes : Fichier / HAL / source / match_score
-    file_cols = [c for c in df_file.columns if not c.startswith('norm_')]
-    hal_cols = [c for c in final_df.columns if c.startswith('HAL_')]
-    final_cols = file_cols + hal_cols + ['source', 'match_score']
-    final_cols = [c for c in final_cols if c in final_df.columns]
+    # Si on avait renommé FILE_source précédemment, on peut renommer proprement dans la sortie
+    if 'FILE_source' in final_df.columns:
+        # Si l'utilisateur veut conserver FILE_source, on laisse ; sinon tu peux fusionner/décider
+        pass
 
-    return final_df[final_cols]
+    return final_df
+
 
 
 
