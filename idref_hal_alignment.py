@@ -272,6 +272,7 @@ def fuzzy_merge_file_hal(df_file, df_hal, threshold=85):
     return final_df[final_cols]
 
 
+
 # =========================================================
 # INTERFACE UTILISATEUR
 # =========================================================
