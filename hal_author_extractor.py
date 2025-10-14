@@ -66,19 +66,30 @@ def fetch_publications_for_collection(collection_code, years="", fields="structH
 
 def extract_author_ids(publications):
     """
-    Extrait les identifiants uniques des auteurs à partir de la liste des publications.
+    Extrait les identifiants uniques des formes-auteurs (docid du référentiel auteur)
+    à partir de la liste des publications, en ne conservant que l'ID numérique final
+    et en ignorant les auteurs sans forme-auteur (ID terminant par -0).
     """
     author_ids = set()
     for doc in publications:
         authors = doc.get('structHasAuthId_fs', [])
         for author_str in authors:
             # Le format est typiquement "STRUCTID_HALID_JoinSep_AUTHORID_FacetSep"
-            # On cherche l'AUTHORID (l'ID de la forme auteur)
-            # On utilise une regex simplifiée pour capturer l'ID juste après le dernier '_' avant 'FacetSep'
             parts = author_str.split('_JoinSep_')
             if len(parts) > 1:
-                author_id_part = parts[1].split('_FacetSep')[0]
-                author_ids.add(author_id_part)
+                # Capture de l'ID sous forme HALID-DOCID (ex: "1188340-1286042" ou "1792468-0")
+                full_author_id = parts[1].split('_FacetSep')[0]
+                
+                # --- CORRECTION: Extraire uniquement le DOCID numérique final ---
+                docid_parts = full_author_id.split('-')
+                
+                # On prend la dernière partie de l'ID. Ex: "1286042" pour "1188340-1286042"
+                docid = docid_parts[-1]
+                
+                # On s'assure que le DOCID n'est pas "0" (auteur sans forme/référentiel)
+                if docid.isdigit() and docid != "0":
+                    author_ids.add(docid)
+                # --------------------------------------------------------------
                 
     return list(author_ids)
 
