@@ -93,30 +93,33 @@ def extract_author_ids(publications):
                 
     return list(author_ids)
 
-def fetch_author_details(author_ids, fields="docid,fullName_s,valid_s,halId_s,orcidId_s,firstName_s,lastName_s"):
+def fetch_author_details(author_ids, fields):
     """
-    Récupère les détails de chaque auteur (forme-auteur) à partir de leur docid
-    en utilisant l'API de référence HAL.
-    Similaire à la fonction `sendQuery` du JS original.
+    Récupère les détails de chaque forme-auteur (par son docid)
+    en utilisant l'API de référence HAL, en interrogeant par lots (chunk) 
+    via le champ `person_i` pour une exécution rapide.
     """
     authors_details = []
-    
-    # La requête de l'API `ref/author` prend une liste d'IDs (docid) séparés par OR
-    # On va regrouper les requêtes pour respecter la limite de l'URL et optimiser
     chunk_size = 50 
     total_authors = len(author_ids)
     
-    print(f"\nRécupération des détails pour {total_authors} auteurs...")
+    st.toast(f"Récupération des détails pour {total_authors} formes-auteurs (Requête par lots via person_i)...")
     
+    progress_bar = st.progress(0, text="0% - Récupération des détails auteurs...")
+
     for i in range(0, total_authors, chunk_size):
         chunk = author_ids[i:i + chunk_size]
-        docid_query = '%22 OR docid:%22'.join(chunk)
+        
+        # --- CORRECTION APPLIQUÉE ICI : Utilisation de person_i au lieu de docid ---
+        # Construction de la requête Solr pour les person_i
+        person_i_query = '%22 OR person_i:%22'.join(chunk)
         
         query_params = {
-            'q': f'docid:"{docid_query}"',
+            'q': f'person_i:"{person_i_query}"',
             'wt': 'json',
             'fl': fields
         }
+        # --------------------------------------------------------------------------
         
         url = f"{HAL_AUTHOR_API}?{urlencode(query_params)}"
         
@@ -127,7 +130,7 @@ def fetch_author_details(author_ids, fields="docid,fullName_s,valid_s,halId_s,or
             
             docs = data.get('response', {}).get('docs', [])
             
-            # Traitement des champs comme dans le script JS original
+            # Application de la logique de transformation du statut de validation
             for doc in docs:
                 if 'valid_s' in doc:
                     validity_status = doc['valid_s']
@@ -139,15 +142,19 @@ def fetch_author_details(author_ids, fields="docid,fullName_s,valid_s,halId_s,or
                         doc['valid_s'] = "forme auteur sans IdHAL associé"
                 authors_details.append(doc)
 
-            print(f"Progression: {min(i + chunk_size, total_authors)} / {total_authors}")
-            time.sleep(0.3) # Pause entre les requêtes groupées
+            # Mise à jour de la barre de progression
+            progress_percent = (i + len(chunk)) / total_authors
+            progress_bar.progress(progress_percent, text=f"{int(progress_percent * 100)}% - Lots traités.")
+
+            # Petite pause pour respecter les limites de l'API
+            time.sleep(0.3) 
 
         except requests.exceptions.RequestException as e:
-            print(f"Erreur lors de la requête API (Détails Auteur): {e}")
-            break
+            st.error(f"Erreur lors de la requête API (Détails Auteur pour le lot {i} à {i+len(chunk)}): {e}")
+            continue
             
+    progress_bar.empty()
     return authors_details
-
 def create_unique_authors_dataframe(authors_details):
     """
     Crée un DataFrame final en sélectionnant la 'meilleure' forme-auteur
