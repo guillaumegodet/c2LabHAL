@@ -15,7 +15,7 @@ from urllib.parse import urlencode
 # ------------------------------------------------------------
 HAL_SEARCH_API = "https://api.archives-ouvertes.fr/search/"
 HAL_AUTHOR_API = "https://api.archives-ouvertes.fr/ref/author/"
-FIELDS_LIST = "docid,fullName_s,firstName_s,lastName_s,valid_s,idHal_s,halId_s,idrefId_s,orcidId_s,emailDomain_s "
+FIELDS_LIST = "form_i,person_i,lastName_s,firstName_s,valid_s,idHal_s,halId_s,idrefId_s,orcidId_s,emailDomain_s "
 REQUEST_DELAY = 0.5  # délai recommandé entre requêtes
 
 # ------------------------------------------------------------
