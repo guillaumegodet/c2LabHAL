@@ -137,31 +137,39 @@ if st.button("🚀 Lancer l'extraction") and collection_code:
     st.info(f"Extraction en cours pour **{collection_code}**, période **{years or 'toutes'}**...")
 
     try:
-        # Étape 1
-        pubs = fetch_publications_for_collection(collection_code, years)
+        with st.spinner("🔎 Récupération des publications..."):
+            pubs = fetch_publications_for_collection(collection_code, years)
+
         if not pubs:
             st.error("Aucune publication trouvée pour cette collection.")
         else:
-            # Étape 2
-            author_ids = extract_author_ids(pubs)
-            st.success(f"{len(author_ids)} formes-auteurs détectées.")
+            st.success(f"✅ {len(pubs)} publications récupérées.")
+            time.sleep(0.3)
 
-            # Étape 3
-            details = fetch_author_details_batch(author_ids, FIELDS_LIST, batch_size=batch_size)
+            with st.spinner("👥 Extraction des identifiants d’auteurs..."):
+                author_ids = extract_author_ids(pubs)
+            st.success(f"✅ {len(author_ids)} formes-auteurs détectées.")
 
-            if not details:
-                st.error("Aucune forme-auteur récupérée.")
+            if not author_ids:
+                st.warning("Aucune forme-auteur détectée. Vérifie la collection ou la période.")
             else:
-                df = pd.DataFrame(details)
-                requested_fields = [f.strip() for f in FIELDS_LIST.split(",")]
-                df = df[[f for f in requested_fields if f in df.columns]]
+                with st.spinner("📡 Récupération des détails auteurs (mode batch)..."):
+                    details = fetch_author_details_batch(author_ids, FIELDS_LIST, batch_size=batch_size)
 
-                filename = f"formes_auteurs_{collection_code}_{years or 'all'}.csv"
-                csv = df.to_csv(index=False, sep=";", encoding="utf-8")
-                st.download_button("📥 Télécharger le CSV", csv, file_name=filename, mime="text/csv")
+                if not details:
+                    st.error("Aucune forme-auteur récupérée.")
+                else:
+                    df = pd.DataFrame(details)
+                    requested_fields = [f.strip() for f in FIELDS_LIST.split(",")]
+                    df = df[[f for f in requested_fields if f in df.columns]]
 
-                st.dataframe(df.head())
-                st.success(f"Extraction terminée ({len(df)} lignes).")
+                    filename = f"formes_auteurs_{collection_code}_{years or 'all'}.csv"
+                    csv = df.to_csv(index=False, sep=";", encoding="utf-8")
+
+                    st.success(f"✅ Extraction terminée : {len(df)} formes-auteurs récupérées.")
+                    st.download_button("📥 Télécharger le CSV", csv, file_name=filename, mime="text/csv")
+                    st.dataframe(df.head())
 
     except Exception as e:
         st.error(f"Erreur pendant l'extraction : {e}")
+
