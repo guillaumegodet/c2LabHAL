@@ -99,30 +99,25 @@ def extract_author_ids(publications):
 def fetch_author_details(author_ids, fields):
     """
     Récupère les détails de chaque forme-auteur (par son docid)
-    en utilisant l'API de référence HAL, en interrogeant par lots (chunk) 
-    via le champ `person_i`.
+    en utilisant l'API de référence HAL, une requête par ID avec un délai.
+    Ceci est la méthode la plus stable pour l'API /ref/author/.
     """
     authors_details = []
-    chunk_size = 5 
     total_authors = len(author_ids)
     
-    st.toast(f"Récupération des détails pour {total_authors} formes-auteurs (Requête par lots via person_i)...")
+    st.toast(f"Récupération des détails pour {total_authors} formes-auteurs (Requêtes individuelles : ATTENTION, TRES LONG)...")
     
-    progress_bar = st.progress(0, text="0% - Récupération des détails auteurs...")
+    progress_bar = st.progress(0, text="0% - Préparation des requêtes individuelles...")
 
-    for i in range(0, total_authors, chunk_size):
-        chunk = author_ids[i:i + chunk_size]
+    for index, docid in enumerate(author_ids):
         
-        # --- CORRECTION APPLIQUÉE : Utilisation de person_i au lieu de docid ---
-        # Construction de la requête Solr pour les person_i
-        person_i_query = '%22 OR person_i:%22'.join(chunk)
-        
+        # Construction de la requête pour un seul person_i (l'ID de la forme-auteur)
         query_params = {
-            'q': f'person_i:"{person_i_query}"',
+            # Utilisation de person_i comme confirmé par vos tests
+            'q': f'person_i:"{docid}"', 
             'wt': 'json',
             'fl': fields
         }
-        # --------------------------------------------------------------------------
         
         url = f"{HAL_AUTHOR_API}?{urlencode(query_params)}"
         
@@ -133,12 +128,10 @@ def fetch_author_details(author_ids, fields):
             
             docs = data.get('response', {}).get('docs', [])
             
-            # --- DEBUG ---
-            print(f"DEBUG: Lot {i}/{total_authors}. Tentative: {len(chunk)} IDs. Reçus: {len(docs)} documents.")
-            # -------------
-            
-            # Application de la logique de transformation du statut de validation
-            for doc in docs:
+            # Traitement des données si un document est trouvé
+            if docs:
+                doc = docs[0]
+                # Application de la logique de transformation du statut de validation
                 if 'valid_s' in doc:
                     validity_status = doc['valid_s']
                     if validity_status == "VALID":
@@ -148,23 +141,29 @@ def fetch_author_details(author_ids, fields):
                     elif validity_status == "INCOMING":
                         doc['valid_s'] = "forme auteur sans IdHAL associé"
                 authors_details.append(doc)
-
+                
+            # --- DEBUG ---
+            print(f"DEBUG: Requête {index+1}/{total_authors}. ID: {docid}. Reçus: {len(docs)} documents.")
+            # -------------
+                
             # Mise à jour de la barre de progression
-            progress_percent = (i + len(chunk)) / total_authors
-            progress_bar.progress(progress_percent, text=f"{int(progress_percent * 100)}% - Lots traités.")
+            progress_percent = (index + 1) / total_authors
+            progress_bar.progress(progress_percent, text=f"{int(progress_percent * 100)}% - Détails de {docid} récupérés.")
 
-            # Petite pause pour respecter les limites de l'API
-            time.sleep(0.3) 
+            # Pause obligatoire pour respecter les limites de l'API
+            # Augmentation de la pause pour maximiser la stabilité
+            time.sleep(2) 
 
         except requests.exceptions.RequestException as e:
-            st.error(f"Erreur lors de la requête API (Détails Auteur pour le lot {i} à {i+len(chunk)}): {e}")
+            st.error(f"Erreur lors de la requête API (Détails Auteur pour ID {docid}): {e}")
             # --- DEBUG ---
-            print(f"DEBUG: ERREUR NON FATALE rencontrée pour le lot {i}. Détails: {e}. Continue vers le lot suivant.")
+            print(f"DEBUG: ERREUR NON FATALE rencontrée pour ID {docid}. Détails: {e}. Continue.")
             # -------------
-            continue # Passe au lot suivant en cas d'erreur
-            
+            continue # Ne pas s'arrêter en cas d'erreur sur un ID
+
     progress_bar.empty()
     return authors_details
+    
 
 def get_all_author_forms_data(collection_code, years="", fields_list="docid,fullName_s,valid_s,halId_s,orcidId_s,firstName_s,lastName_s"):
     """
