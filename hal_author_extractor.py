@@ -103,7 +103,7 @@ def fetch_author_details(author_ids, fields):
     via le champ `person_i`.
     """
     authors_details = []
-    chunk_size = 10 
+    chunk_size = 5 
     total_authors = len(author_ids)
     
     st.toast(f"Récupération des détails pour {total_authors} formes-auteurs (Requête par lots via person_i)...")
