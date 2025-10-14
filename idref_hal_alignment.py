@@ -109,10 +109,12 @@ def fetch_author_details_batch(author_ids, fields, batch_size=20):
 # =========================================================
 # RECHERCHE IDREF
 # =========================================================
-def search_idref_for_person(full_name):
+def search_idref_for_person(full_name, min_birth_year, min_death_year):
     try:
         return pydref_api.get_idref(
             query=full_name,
+            min_birth_year=min_birth_year,
+            min_death_year=min_death_year,
             is_scientific=True,
             exact_fullname=True
         )
@@ -132,6 +134,11 @@ st.markdown(
 
 uploaded_file = st.file_uploader("📁 Téléverser un fichier (.csv, .xlsx)", type=["csv", "xlsx"])
 collection_code = st.text_input("🏛️ Code de la collection HAL (ex: CDMO)", "")
+
+col1, col2 = st.columns(2)
+current_year = datetime.datetime.now().year
+min_birth_year = col1.number_input("Année de naissance min. (YYYY)", value=1920, min_value=1000, max_value=current_year, step=1)
+min_death_year = col2.number_input("Année de décès min. (YYYY)", value=2005, min_value=1000, max_value=current_year + 5, step=1)
 
 if uploaded_file and collection_code:
     try:
@@ -157,7 +164,7 @@ if uploaded_file and collection_code:
 
             for idx, row in data.iterrows():
                 full_name = f"{row[firstname_col]} {row[name_col]}".strip()
-                matches = search_idref_for_person(full_name)
+                matches = search_idref_for_person(full_name, min_birth_year, min_death_year)
                 ppn = matches[0].get("idref") if matches else None
 
                 idref_results.append({
@@ -198,7 +205,6 @@ if uploaded_file and collection_code:
                 indicator=True
             )
 
-            # Source fusionnée
             merged_df["source"] = merged_df["_merge"].map({
                 "both": "Fichier + HAL",
                 "left_only": "Fichier",
