@@ -109,6 +109,8 @@ def fetch_author_details(author_ids, fields):
 
     for i in range(0, total_authors, chunk_size):
         chunk = author_ids[i:i + chunk_size]
+    for i in range(0, total_authors, chunk_size):
+        chunk = author_ids[i:i + chunk_size]
         
         # --- CORRECTION APPLIQUÉE ICI : Utilisation de person_i au lieu de docid ---
         # Construction de la requête Solr pour les person_i
@@ -122,7 +124,6 @@ def fetch_author_details(author_ids, fields):
         # --------------------------------------------------------------------------
         
         url = f"{HAL_AUTHOR_API}?{urlencode(query_params)}"
-        
         try:
             response = requests.get(url)
             response.raise_for_status()
@@ -130,8 +131,13 @@ def fetch_author_details(author_ids, fields):
             
             docs = data.get('response', {}).get('docs', [])
             
+            # --- AJOUT DE DÉBOGAGE ICI ---
+            print(f"DEBUG: Lot {i}/{total_authors}. Tentative: {len(chunk)} IDs. Reçus: {len(docs)} documents.")
+            # -----------------------------
+            
             # Application de la logique de transformation du statut de validation
             for doc in docs:
+       
                 if 'valid_s' in doc:
                     validity_status = doc['valid_s']
                     if validity_status == "VALID":
@@ -148,11 +154,14 @@ def fetch_author_details(author_ids, fields):
 
             # Petite pause pour respecter les limites de l'API
             time.sleep(0.3) 
-
+        
         except requests.exceptions.RequestException as e:
             st.error(f"Erreur lors de la requête API (Détails Auteur pour le lot {i} à {i+len(chunk)}): {e}")
-            continue
-            
+            # --- AJOUT DE DÉBOGAGE ICI ---
+            print(f"DEBUG: ERREUR NON FATALE rencontrée pour le lot {i}. Détails: {e}")
+            # -----------------------------
+            continue # Passe au lot suivant
+                    
     progress_bar.empty()
     return authors_details
 def create_unique_authors_dataframe(authors_details):
