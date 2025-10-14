@@ -303,11 +303,11 @@ def fuzzy_merge_file_hal(df_file, df_hal, threshold=85):
 # =========================================================
 # INTERFACE UTILISATEUR
 # =========================================================
-st.title("🔗 Alignez une liste de chercheurs avec IdRef et HAL (matching flou)")
+st.title("🔗 Alignez une liste de chercheurs avec IdRef et HAL")
 st.markdown(
     "Téléversez un fichier CSV ou Excel avec les colonnes **Nom** et **Prénom**, "
     "et saisissez une **collection HAL**. L’application recherche les correspondances "
-    "dans **IdRef** et dans **HAL**, effectue un matching flou et génère un CSV enrichi."
+    "dans **IdRef** et dans **HAL**, effectue un matching et génère un CSV enrichi."
 )
 
 uploaded_file = st.file_uploader("📁 Téléverser un fichier (.csv, .xlsx)", type=["csv", "xlsx"])
@@ -324,11 +324,6 @@ col3, col4 = st.columns([2,1])
 similarity_threshold = col3.slider("Seuil de similarité (%) pour considérer une correspondance", 60, 100, 85, step=1)
 batch_size = col4.slider("Taille des lots HAL", 10, 50, 20)
 
-st.markdown("---")
-if USE_RAPIDFUZZ:
-    st.info("fast fuzzy matching: using rapidfuzz (si installé).")
-else:
-    st.info("fallback fuzzy matching: using difflib (SequenceMatcher). Install 'rapidfuzz' for better results.")
 
 if uploaded_file and collection_code:
     try:
