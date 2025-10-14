@@ -79,9 +79,13 @@ def fetch_author_details_batch(author_ids, fields, batch_size=20):
     clean_ids = [i.strip() for i in author_ids if i.strip()]
     total = len(clean_ids)
 
+    # Barre de progression Streamlit
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
     for start in range(0, total, batch_size):
         batch = clean_ids[start:start + batch_size]
-        or_query = " OR ".join([f'person_i:"{i}"' for i in batch])
+        or_query = " OR ".join([f'person_i:\"{i}\"' for i in batch])
         params = {"q": or_query, "wt": "json", "fl": fields, "rows": batch_size}
         url = f"{HAL_AUTHOR_API}?{urlencode(params)}"
 
@@ -90,24 +94,23 @@ def fetch_author_details_batch(author_ids, fields, batch_size=20):
             response.raise_for_status()
             data = response.json()
             docs = data.get("response", {}).get("docs", [])
-            for doc in docs:
-                if doc.get("valid_s") == "VALID":
-                    doc["valid_s"] = "forme auteur principale d'un IdHAL"
-                elif doc.get("valid_s") == "OLD":
-                    doc["valid_s"] = "forme auteur alternative d'un IdHAL"
-                elif doc.get("valid_s") == "INCOMING":
-                    doc["valid_s"] = "forme auteur sans IdHAL associé"
-                authors_details.append(doc)
+
+            # On conserve les valeurs brutes de valid_s
+            authors_details.extend(docs)
+
         except requests.exceptions.RequestException as e:
             st.warning(f"⚠️ Erreur sur le lot {batch}: {e}")
             continue
 
         progress = min(start + batch_size, total)
-        st.progress(progress / total)
+        progress_bar.progress(progress / total)
+        status_text.text(f"Traitement : {progress}/{total} auteurs...")
         time.sleep(REQUEST_DELAY)
 
-    return authors_details
+    progress_bar.empty()
+    status_text.text("✅ Téléchargement terminé !")
 
+    return authors_details
 
 # ------------------------------------------------------------
 # Interface Streamlit
