@@ -114,20 +114,19 @@ def fetch_author_details_batch(author_ids, fields, batch_size=20):
 # ------------------------------------------------------------
 st.set_page_config(page_title="Extraction HAL - Auteurs", page_icon="📚", layout="centered")
 
-st.title("📚 Extraction des formes-auteurs HAL")
+st.title("🧲 Extraction des formes-auteurs HAL")
 st.markdown(
     """
-    Cette application extrait les **formes-auteurs** (IdHAL, ORCID, etc.)
-    à partir d’une **collection HAL** et d’une **période donnée**.
+    Cette application extrait les **formes-auteurs** à partir d’une **collection HAL**.
     """
 )
 
 # Entrées utilisateur
 col1, col2 = st.columns(2)
 with col1:
-    collection_code = st.text_input("Code de la collection HAL (ex : CDMO)", "")
+    collection_code = st.text_input("Code de la collection HAL", "")
 with col2:
-    years = st.text_input("Année ou intervalle (ex : 2024 ou [2020 TO 2024])", "")
+    years = st.text_input("Année ou intervalle (ex : 2025 ou [2020 TO 2024])", "")
 
 batch_size = st.slider("Taille des lots (requêtes groupées)", 10, 50, 20, step=5)
 delay = st.slider("Délai entre requêtes (secondes)", 0.1, 1.0, 0.5, 0.1)
