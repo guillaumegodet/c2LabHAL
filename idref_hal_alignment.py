@@ -227,6 +227,9 @@ col3, col4 = st.columns(2)
 year_min = col3.number_input("Année min des publications HAL", 1900, current_year, 2015)
 year_max = col4.number_input("Année max des publications HAL", 1900, current_year + 5, current_year)
 
+similarity_threshold = st.slider("Seuil de similarité pour la recherche IdRef (%)", 60, 100, 85)
+batch_size = st.slider("Taille des lots HAL", 10, 50, 20)
+
 if uploaded_file and collection_code:
     data = pd.read_csv(uploaded_file) if uploaded_file.name.endswith(".csv") else pd.read_excel(uploaded_file)
     cols = data.columns.tolist()
