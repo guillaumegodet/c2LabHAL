@@ -243,22 +243,45 @@ def enrich_hal_rows_with_idref_parallel(hal_df, min_birth, min_death, max_worker
 # Fuzzy merge (identique)
 # =========================
 def fuzzy_merge_file_hal(df_file, df_hal, threshold=85):
-    hal_keep = ["form_i","person_i","lastName_s","firstName_s","valid_s","idHal_s","halId_s","idrefId_s","orcidId_s","emailDomain_s"]
+    hal_keep = [
+        "form_i", "person_i", "lastName_s", "firstName_s", "valid_s",
+        "idHal_s", "halId_s", "idrefId_s", "orcidId_s", "emailDomain_s"
+    ]
     hal_keep = [c for c in hal_keep if c in df_hal.columns]
-    df_file["norm_full"] = (df_file["Prénom"].fillna("").apply(normalize_text)+" "+df_file["Nom"].fillna("").apply(normalize_text)).str.strip()
-    df_hal["norm_full"] = (df_hal["firstName_s"].fillna("").apply(normalize_text)+" "+df_hal["lastName_s"].fillna("").apply(normalize_text)).str.strip()
+
+    # Normalisation
+    df_file["norm_full"] = (
+        df_file["Prénom"].fillna("").apply(normalize_text)
+        + " "
+        + df_file["Nom"].fillna("").apply(normalize_text)
+    ).str.strip()
+    df_hal["norm_full"] = (
+        df_hal["firstName_s"].fillna("").apply(normalize_text)
+        + " "
+        + df_hal["lastName_s"].fillna("").apply(normalize_text)
+    ).str.strip()
     df_hal["__matched"] = False
 
-    cols_out = ["Nom","Prénom","idref_ppn_list","idref_status","nb_match","match_info","alt_names","idref_orcid","idref_description","idref_idhal"]
+    idref_cols = [
+        "Nom", "Prénom", "idref_ppn_list", "idref_status", "nb_match",
+        "match_info", "alt_names", "idref_orcid", "idref_description", "idref_idhal"
+    ]
     hal_pref = [f"HAL_{c}" for c in hal_keep]
-    merged = []
+    final_cols = list(dict.fromkeys(idref_cols + hal_pref + ["source", "match_score"]))
+    merged_rows = []
 
-    for _, fr in df_file.iterrows():
-        row = {**{c: fr.get(c) for c in cols_out}, **{c: None for c in hal_pref}, "source": "Fichier", "match_score": None}
+    # Fusion fichier → HAL
+    for _, f_row in df_file.iterrows():
+        row = {c: f_row.get(c) for c in idref_cols}
+        for c in hal_pref:
+            row[c] = None
+        row["source"] = "Fichier"
+        row["match_score"] = None
+
         best_score, best_idx = -1, None
-        f_norm = fr["norm_full"]
-        for i, hr in df_hal[df_hal["__matched"] == False].iterrows():
-            score = similarity_score(f_norm, hr["norm_full"])
+        f_norm = f_row["norm_full"]
+        for i, h_row in df_hal[df_hal["__matched"] == False].iterrows():
+            score = similarity_score(f_norm, h_row["norm_full"])
             if score > best_score:
                 best_score, best_idx = score, i
         if best_idx is not None and best_score >= threshold:
@@ -268,18 +291,34 @@ def fuzzy_merge_file_hal(df_file, df_hal, threshold=85):
             row["source"] = "Fichier + HAL"
             row["match_score"] = best_score
             df_hal.at[best_idx, "__matched"] = True
-        merged.append(row)
+        merged_rows.append(row)
 
-    for _, h in df_hal[df_hal["__matched"] == False].iterrows():
-        row = {"Nom": h.get("lastName_s"), "Prénom": h.get("firstName_s")}
-        for c in cols_out:
-            row[c] = h.get(c)
+    # HAL-only auteurs non fusionnés
+    for _, h_row in df_hal[df_hal["__matched"] == False].iterrows():
+        row = {c: None for c in idref_cols + hal_pref + ["source", "match_score"]}
+
+        # ✅ Remplissage explicite du nom et prénom HAL
+        row["Nom"] = h_row.get("lastName_s") or ""
+        row["Prénom"] = h_row.get("firstName_s") or ""
+
+        # Champs HAL enrichis
         for c in hal_keep:
-            row[f"HAL_{c}"] = h.get(c)
+            row[f"HAL_{c}"] = h_row.get(c)
+
+        # Champs IdRef associés (issus de l’enrichissement HAL)
+        for c in ["idref_ppn_list", "idref_status", "nb_match", "match_info",
+                  "alt_names", "idref_orcid", "idref_description", "idref_idhal"]:
+            if c in h_row.index:
+                row[c] = h_row.get(c)
+
         row["source"] = "HAL"
         row["match_score"] = None
-        merged.append(row)
-    return pd.DataFrame(merged)
+        merged_rows.append(row)
+
+    df_final = pd.DataFrame(merged_rows, columns=final_cols)
+    df_final = df_final.loc[:, ~df_final.columns.duplicated()]
+    return df_final
+
 
 # =========================
 # EXPORT XLSX
