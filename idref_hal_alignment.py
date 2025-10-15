@@ -1,5 +1,4 @@
-# streamlit_app_idref_hal_fusion_advanced.py
-
+# streamlit_app_idref_hal_final.py
 import streamlit as st
 import pandas as pd
 import requests
@@ -11,18 +10,20 @@ import unicodedata
 from difflib import SequenceMatcher
 from pydref import Pydref
 
+# --- Optionnel : rapidfuzz pour matching plus rapide
 try:
     from rapidfuzz import fuzz
     USE_RAPIDFUZZ = True
 except ImportError:
     USE_RAPIDFUZZ = False
 
+# --- Moteur Excel
 try:
-    import xlsxwriter  # noqa
+    import xlsxwriter
     EXCEL_ENGINE = "xlsxwriter"
 except ImportError:
     try:
-        import openpyxl  # noqa
+        import openpyxl
         EXCEL_ENGINE = "openpyxl"
     except ImportError:
         EXCEL_ENGINE = None
@@ -30,7 +31,7 @@ except ImportError:
 # =========================================================
 # CONFIGURATION
 # =========================================================
-st.set_page_config(page_title="Alignement IdRef ↔ HAL (Avancé)", layout="wide")
+st.set_page_config(page_title="Alignement IdRef ↔ HAL (Final)", layout="wide")
 
 HAL_SEARCH_API = "https://api.archives-ouvertes.fr/search/"
 HAL_AUTHOR_API = "https://api.archives-ouvertes.fr/ref/author/"
@@ -141,7 +142,7 @@ def fetch_author_details_batch(author_ids, fields, batch_size=20):
     return authors
 
 # =========================================================
-# FUSION FLOUE (inchangée)
+# FUSION FLOUE
 # =========================================================
 def fuzzy_merge_file_hal(df_file, df_hal, threshold=85):
     hal_keep_cols = [
@@ -155,8 +156,8 @@ def fuzzy_merge_file_hal(df_file, df_hal, threshold=85):
                            df_hal["lastName_s"].fillna("").apply(normalize_text)).str.strip()
     df_hal["__matched"] = False
     idref_cols = [
-        "Nom", "Prénom", "idref_ppn", "idref_ppn_list", "idref_status", "nb_match",
-        "match_info", "alt_names", "idref_orcid", "description_match"
+        "Nom", "Prénom", "idref_ppn_list", "idref_status", "nb_match",
+        "match_info", "alt_names", "idref_orcid", "idref_description", "idref_idhal"
     ]
     idref_cols = [c for c in idref_cols if c in df_file.columns or c in ["Nom", "Prénom"]]
     hal_prefixed_cols = [f"HAL_{c}" for c in hal_keep_cols]
@@ -198,36 +199,39 @@ def fuzzy_merge_file_hal(df_file, df_hal, threshold=85):
     return pd.DataFrame(merged_rows, columns=final_cols)
 
 # =========================================================
-# EXPORT XLSX (inchangé sauf fallback)
+# EXPORT XLSX
 # =========================================================
-def export_to_xlsx(fusion_df, idref_df, hal_df):
+def export_to_xlsx(fusion_df, idref_df, hal_df, params_info):
     if EXCEL_ENGINE is None:
         raise RuntimeError("Aucun moteur Excel disponible. Installez 'xlsxwriter' ou 'openpyxl'.")
 
     output = BytesIO()
     with pd.ExcelWriter(output, engine=EXCEL_ENGINE) as writer:
         fusion_df.to_excel(writer, sheet_name="Fusion", index=False)
-        idref_df.to_excel(writer, sheet_name="IdRef", index=False)
-        hal_df.to_excel(writer, sheet_name="HAL", index=False)
+        idref_df.to_excel(writer, sheet_name="extraction IdRef", index=False)
+        hal_df.to_excel(writer, sheet_name="extraction HAL", index=False)
+        pd.DataFrame([params_info]).to_excel(writer, sheet_name="Paramètres", index=False)
     output.seek(0)
     return output
 
 # =========================================================
-# INTERFACE
+# INTERFACE STREAMLIT
 # =========================================================
-st.title("🔗 Alignement Annuaire d'un labo ↔ IdRef ↔ Collection HAL")
+st.title("🔗 Alignement IdRef ↔ HAL (Final)")
 
 uploaded_file = st.file_uploader("📁 Téléverser un fichier (.csv, .xlsx)", type=["csv", "xlsx"])
+collection_code = st.text_input("🏛️ Code de la collection HAL", "")
+
 col1, col2 = st.columns(2)
 current_year = datetime.datetime.now().year
 min_birth_year = col1.number_input("Année de naissance min.", 1920, current_year, 1920)
 min_death_year = col2.number_input("Année de décès min.", 2005, current_year + 5, 2005)
-collection_code = st.text_input("🏛️ Code de la collection HAL", "")
+
 col3, col4 = st.columns(2)
 year_min = col3.number_input("Année min des publications HAL", 1900, current_year, 2015)
 year_max = col4.number_input("Année max des publications HAL", 1900, current_year + 5, current_year)
 
-similarity_threshold = st.slider("Seuil de similarité pour la recherche IdRef (%)", 60, 100, 85)
+similarity_threshold = st.slider("Seuil de similarité (%)", 60, 100, 85)
 batch_size = st.slider("Taille des lots HAL", 10, 50, 20)
 
 if uploaded_file and collection_code:
@@ -236,20 +240,21 @@ if uploaded_file and collection_code:
     name_col = st.selectbox("Colonne Nom", options=cols)
     firstname_col = st.selectbox("Colonne Prénom", options=cols)
     if st.button("🚀 Lancer la recherche combinée IdRef + HAL"):
+        # =====================================================
+        # Étape 1 - Recherche IdRef
+        # =====================================================
         idref_rows = []
         progress = st.progress(0, text="Recherche IdRef en cours...")
-        
+
         for idx, row in data.iterrows():
             first, last = str(row[firstname_col]).strip(), str(row[name_col]).strip()
             full = f"{first} {last}".strip()
             matches = search_idref_for_person(full, min_birth_year, min_death_year)
             nb_match = len(matches)
-            
-            # Initialisation
+
             idref_row = {
                 "Nom": last,
                 "Prénom": first,
-                "idref_ppn": None,
                 "idref_ppn_list": None,
                 "idref_status": "not_found",
                 "nb_match": nb_match,
@@ -257,73 +262,99 @@ if uploaded_file and collection_code:
                 "alt_names": None,
                 "idref_orcid": None,
                 "idref_description": None,
+                "idref_idhal": None,
             }
-        
+
             if nb_match > 0:
-                # --- Extraire toutes les infos des correspondances ---
-                ppn_list = [m.get("idref") for m in matches if m.get("idref")]
-                idref_row["idref_ppn"] = ppn_list[0] if ppn_list else None
+                ppn_list = [m.get("idref", "").replace("idref", "") for m in matches if m.get("idref")]
                 idref_row["idref_ppn_list"] = "|".join(ppn_list)
                 idref_row["idref_status"] = "found" if nb_match == 1 else "ambiguous"
-        
-                # --- Infos textuelles ---
+
                 names = [f"{m.get('first_name','')} {m.get('last_name','')}".strip() for m in matches]
                 idref_row["match_info"] = "; ".join(names)
-        
-                # --- Descriptions issues de pydref.get_description_from_idref_notice() ---
                 descs = []
                 for m in matches:
                     d = m.get("description", [])
                     if isinstance(d, list):
                         descs.extend(d)
                 idref_row["idref_description"] = "; ".join(descs) if descs else None
-        
-                # --- Noms alternatifs ---
+
                 alts = []
                 for m in matches:
                     a = m.get("alt_names", [])
                     if isinstance(a, list):
                         alts.extend(a)
                 idref_row["alt_names"] = "; ".join(sorted(set(alts))) if alts else None
-        
-                # --- ORCID ---
+
                 for m in matches:
                     for ident in m.get("identifiers", []):
                         if "orcid" in ident:
                             idref_row["idref_orcid"] = ident["orcid"]
-        
+                    if "idhal" in m:
+                        idref_row["idref_idhal"] = m["idhal"]
+
             idref_rows.append(idref_row)
             progress.progress((idx + 1) / len(data))
-        
+
         idref_df = pd.DataFrame(idref_rows)
         progress.empty()
 
-
-
+        # =====================================================
+        # Étape 2 - Extraction HAL
+        # =====================================================
         st.info(f"📡 Récupération HAL ({year_min}–{year_max}) pour {collection_code}...")
         pubs = fetch_publications_for_collection(collection_code, year_min, year_max)
         author_ids = extract_author_ids(pubs)
         hal_authors = fetch_author_details_batch(author_ids, FIELDS_LIST, batch_size)
         hal_df = pd.DataFrame(hal_authors)
+
+        # Nettoyage ORCID HAL
+        if "orcidId_s" in hal_df.columns:
+            hal_df["orcidId_s"] = (
+                hal_df["orcidId_s"]
+                .astype(str)
+                .str.extract(r"(\d{4}-\d{4}-\d{4}-\d{4})")[0]
+            )
+
         if "lastName_s" not in hal_df.columns:
             hal_df["lastName_s"] = None
         if "firstName_s" not in hal_df.columns:
             hal_df["firstName_s"] = None
 
+        # =====================================================
+        # Étape 3 - Fusion floue
+        # =====================================================
         st.info("🔗 Fusion floue en cours...")
         merged_df = fuzzy_merge_file_hal(idref_df, hal_df, threshold=similarity_threshold)
         st.success(f"Fusion terminée : {len(merged_df)} lignes.")
-
         st.dataframe(merged_df.head(50))
+
+        # =====================================================
+        # Étape 4 - Export
+        # =====================================================
         csv_output = merged_df.to_csv(index=False, sep=";", encoding="utf-8")
-        st.download_button("💾 Télécharger le CSV", csv_output,
-                           file_name=f"fusion_idref_hal_{collection_code}_{datetime.datetime.now():%Y%m%d}.csv",
-                           mime="text/csv")
+        st.download_button(
+            "💾 Télécharger le CSV",
+            csv_output,
+            file_name=f"fusion_idref_hal_{collection_code}_{datetime.datetime.now():%Y%m%d}.csv",
+            mime="text/csv"
+        )
 
         try:
-            xlsx_output = export_to_xlsx(merged_df, idref_df, hal_df)
-            st.download_button("📘 Télécharger le fichier Excel (XLSX)", xlsx_output,
-                               file_name=f"fusion_idref_hal_{collection_code}_{datetime.datetime.now():%Y%m%d}.xlsx",
-                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            params_info = {
+                "Collection HAL": collection_code,
+                "Année min": year_min,
+                "Année max": year_max,
+                "Seuil de similarité": similarity_threshold,
+                "Taille des lots HAL": batch_size,
+                "Date extraction": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+            }
+            xlsx_output = export_to_xlsx(merged_df, idref_df, hal_df, params_info)
+            st.download_button(
+                "📘 Télécharger le fichier Excel (XLSX)",
+                xlsx_output,
+                file_name=f"fusion_idref_hal_{collection_code}_{datetime.datetime.now():%Y%m%d}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
         except RuntimeError as re:
             st.warning(str(re))
