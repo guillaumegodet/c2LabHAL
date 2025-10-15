@@ -238,67 +238,67 @@ if uploaded_file and collection_code:
     name_col = st.selectbox("Colonne Nom", options=cols)
     firstname_col = st.selectbox("Colonne Prénom", options=cols)
     if st.button("🚀 Lancer la recherche combinée IdRef + HAL"):
-    idref_rows = []
-    progress = st.progress(0, text="Recherche IdRef en cours...")
-    
-    for idx, row in data.iterrows():
-        first, last = str(row[firstname_col]).strip(), str(row[name_col]).strip()
-        full = f"{first} {last}".strip()
-        matches = search_idref_for_person(full, min_birth_year, min_death_year)
-        nb_match = len(matches)
+        idref_rows = []
+        progress = st.progress(0, text="Recherche IdRef en cours...")
         
-        # Initialisation
-        idref_row = {
-            "Nom": last,
-            "Prénom": first,
-            "idref_ppn": None,
-            "idref_ppn_list": None,
-            "idref_status": "not_found",
-            "nb_match": nb_match,
-            "match_info": None,
-            "alt_names": None,
-            "idref_orcid": None,
-            "idref_description": None,
-        }
-    
-        if nb_match > 0:
-            # --- Extraire toutes les infos des correspondances ---
-            ppn_list = [m.get("idref") for m in matches if m.get("idref")]
-            idref_row["idref_ppn"] = ppn_list[0] if ppn_list else None
-            idref_row["idref_ppn_list"] = "|".join(ppn_list)
-            idref_row["idref_status"] = "found" if nb_match == 1 else "ambiguous"
-    
-            # --- Infos textuelles ---
-            names = [f"{m.get('first_name','')} {m.get('last_name','')}".strip() for m in matches]
-            idref_row["match_info"] = "; ".join(names)
-    
-            # --- Descriptions issues de pydref.get_description_from_idref_notice() ---
-            descs = []
-            for m in matches:
-                d = m.get("description", [])
-                if isinstance(d, list):
-                    descs.extend(d)
-            idref_row["idref_description"] = "; ".join(descs) if descs else None
-    
-            # --- Noms alternatifs ---
-            alts = []
-            for m in matches:
-                a = m.get("alt_names", [])
-                if isinstance(a, list):
-                    alts.extend(a)
-            idref_row["alt_names"] = "; ".join(sorted(set(alts))) if alts else None
-    
-            # --- ORCID ---
-            for m in matches:
-                for ident in m.get("identifiers", []):
-                    if "orcid" in ident:
-                        idref_row["idref_orcid"] = ident["orcid"]
-    
-        idref_rows.append(idref_row)
-        progress.progress((idx + 1) / len(data))
-    
-    idref_df = pd.DataFrame(idref_rows)
-    progress.empty()
+        for idx, row in data.iterrows():
+            first, last = str(row[firstname_col]).strip(), str(row[name_col]).strip()
+            full = f"{first} {last}".strip()
+            matches = search_idref_for_person(full, min_birth_year, min_death_year)
+            nb_match = len(matches)
+            
+            # Initialisation
+            idref_row = {
+                "Nom": last,
+                "Prénom": first,
+                "idref_ppn": None,
+                "idref_ppn_list": None,
+                "idref_status": "not_found",
+                "nb_match": nb_match,
+                "match_info": None,
+                "alt_names": None,
+                "idref_orcid": None,
+                "idref_description": None,
+            }
+        
+            if nb_match > 0:
+                # --- Extraire toutes les infos des correspondances ---
+                ppn_list = [m.get("idref") for m in matches if m.get("idref")]
+                idref_row["idref_ppn"] = ppn_list[0] if ppn_list else None
+                idref_row["idref_ppn_list"] = "|".join(ppn_list)
+                idref_row["idref_status"] = "found" if nb_match == 1 else "ambiguous"
+        
+                # --- Infos textuelles ---
+                names = [f"{m.get('first_name','')} {m.get('last_name','')}".strip() for m in matches]
+                idref_row["match_info"] = "; ".join(names)
+        
+                # --- Descriptions issues de pydref.get_description_from_idref_notice() ---
+                descs = []
+                for m in matches:
+                    d = m.get("description", [])
+                    if isinstance(d, list):
+                        descs.extend(d)
+                idref_row["idref_description"] = "; ".join(descs) if descs else None
+        
+                # --- Noms alternatifs ---
+                alts = []
+                for m in matches:
+                    a = m.get("alt_names", [])
+                    if isinstance(a, list):
+                        alts.extend(a)
+                idref_row["alt_names"] = "; ".join(sorted(set(alts))) if alts else None
+        
+                # --- ORCID ---
+                for m in matches:
+                    for ident in m.get("identifiers", []):
+                        if "orcid" in ident:
+                            idref_row["idref_orcid"] = ident["orcid"]
+        
+            idref_rows.append(idref_row)
+            progress.progress((idx + 1) / len(data))
+        
+        idref_df = pd.DataFrame(idref_rows)
+        progress.empty()
 
 
 
