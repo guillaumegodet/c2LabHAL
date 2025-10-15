@@ -217,19 +217,21 @@ def export_to_xlsx(fusion_df, idref_df, hal_df, params_info):
 # =========================================================
 # INTERFACE STREAMLIT
 # =========================================================
-st.title("🔗 Alignement IdRef ↔ HAL (Final)")
+st.title("🔗 Alignement Annuaire interne de chercheurs ↔ IdRef ↔ HAL")
 
 uploaded_file = st.file_uploader("📁 Téléverser un fichier (.csv, .xlsx)", type=["csv", "xlsx"])
-collection_code = st.text_input("🏛️ Code de la collection HAL", "")
 
 col1, col2 = st.columns(2)
 current_year = datetime.datetime.now().year
 min_birth_year = col1.number_input("Année de naissance min.", 1920, current_year, 1920)
 min_death_year = col2.number_input("Année de décès min.", 2005, current_year + 5, 2005)
 
+collection_code = st.text_input("🏛️ Code de la collection HAL", "")
 col3, col4 = st.columns(2)
+
 year_min = col3.number_input("Année min des publications HAL", 1900, current_year, 2015)
 year_max = col4.number_input("Année max des publications HAL", 1900, current_year + 5, current_year)
+
 
 similarity_threshold = st.slider("Seuil de similarité (%)", 60, 100, 85)
 batch_size = st.slider("Taille des lots HAL", 10, 50, 20)
