@@ -35,6 +35,43 @@ except ImportError:
 # CONFIG
 # =========================
 st.set_page_config(page_title="Alignement Annuaire de chercheurs ↔ IdRef ↔ Collection HAL", layout="wide")
+# =========================
+# SIDEBAR MENU
+# =========================
+def add_sidebar_menu():
+    st.sidebar.header("À propos")
+    st.sidebar.info(
+        """
+        **c2LabHAL - Alignement IdRef ↔ HAL**
+
+        Cet outil permet :
+        - de rechercher des correspondances entre des auteurs d’un fichier et IdRef,
+        - d’extraire les formes-auteurs d’une collection HAL,
+        - et de fusionner les deux sources.
+
+        Il peut être utilisé :
+        - avec un fichier seul,
+        - avec une collection HAL seule,
+        - ou en combinant les deux.
+        """
+    )
+    st.sidebar.markdown("---")
+
+    st.sidebar.header("Autres applications c2LabHAL")
+    st.sidebar.markdown("📖 [c2LabHAL - Application Principale](https://c2labhal.streamlit.app/)")
+    st.sidebar.markdown("🏛️ [c2LabHAL - Version Nantes Université](https://c2labhal-nantes.streamlit.app/)")
+    st.sidebar.markdown("🔗 [Alignez une liste de chercheurs avec IdRef et HAL](https://c2labhal-idref-hal-alignment.streamlit.app/)")
+
+    st.sidebar.markdown("---")
+
+    st.sidebar.markdown("### Présentation du projet :")
+    st.sidebar.markdown("[📊 Voir les diapositives](https://slides.com/guillaumegodet/deck-d5bc03#/2)")
+    st.sidebar.markdown("### Code source :")
+    st.sidebar.markdown("[🐙 Voir sur GitHub](https://github.com/GuillaumeGodet/c2labhal)")
+
+# Appel du menu latéral
+add_sidebar_menu()
+
 HAL_SEARCH_API = "https://api.archives-ouvertes.fr/search/"
 HAL_AUTHOR_API = "https://api.archives-ouvertes.fr/ref/author/"
 FIELDS_LIST = "docid,form_i,person_i,lastName_s,firstName_s,valid_s,idHal_s,halId_s,idrefId_s,orcidId_s,emailDomain_s"
