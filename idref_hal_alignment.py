@@ -307,7 +307,31 @@ def export_xlsx(fusion, idref_df=None, hal_df=None, params=None):
 # =========================
 # INTERFACE
 # =========================
-st.title("🔗 Alignement Annuaire de chercheurs ↔ IdRef ↔ Collection HAL")
+def add_sidebar_menu():
+    st.sidebar.header("À Propos")
+    st.sidebar.info(
+        """
+        **c2LabHAL - Version CSV** :
+        Cet outil permet de comparer une liste de publications (fournie via un fichier CSV contenant au minimum les colonnes 'doi' et 'Title')
+        avec une collection HAL spécifique. Il enrichit également les données avec Unpaywall et les permissions de dépôt.
+        """
+    )
+    st.sidebar.markdown("---")
+   
+    st.sidebar.header("Autres applications c2LabHAL")
+    st.sidebar.markdown("📖 [c2LabHAL - Application Principale](https://c2labhal.streamlit.app/)")
+    st.sidebar.markdown("🏛️ [c2LabHAL version Nantes Université](https://c2labhal-nantes.streamlit.app/)")
+    st.sidebar.markdown("🔗 [Alignez une liste de chercheurs avec IdRef et HAL](https://c2labhal-idref-hal-alignment.streamlit.app/)")
+
+
+    st.sidebar.markdown("---")
+   
+    st.sidebar.markdown("Présentation du projet :")
+    st.sidebar.markdown("[📊 Voir les diapositives](https://slides.com/guillaumegodet/deck-d5bc03#/2)")
+    st.sidebar.markdown("Code source :")
+    st.sidebar.markdown("[🐙 Voir sur GitHub](https://github.com/GuillaumeGodet/c2labhal)")
+    
+    st.title("🔗 Alignement Annuaire de chercheurs ↔ IdRef ↔ Collection HAL")
 
 uploaded_file = st.file_uploader("📄 Fichier auteurs (facultatif)", type=["csv","xlsx"])
 col1, col2 = st.columns(2)
