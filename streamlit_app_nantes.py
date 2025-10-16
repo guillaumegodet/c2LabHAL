@@ -177,7 +177,7 @@ def add_sidebar_menu():
     st.sidebar.header("Autres applications c2LabHAL")
     st.sidebar.markdown("📖 [c2LabHAL - Application Principale](https://c2labhal.streamlit.app/)")
     st.sidebar.markdown("📄 [c2LabHAL version CSV](https://c2labhal-csv.streamlit.app/)")
-    st.sidebar.markdown("🔗 [Alignez une liste de chercheurs avec IdRef](https://c2labhal-idref.streamlit.app/)")
+    st.sidebar.markdown("🔗 [Alignez une liste de chercheurs avec IdRef et HAL](https://c2labhal-idref-hal-alignment.streamlit.app/)")
 
 
     st.sidebar.markdown("---")
