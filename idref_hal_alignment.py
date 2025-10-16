@@ -310,7 +310,7 @@ def export_xlsx(fusion, idref_df=None, hal_df=None, params=None):
    
 st.title("🔗 Alignement Annuaire de chercheurs ↔ IdRef ↔ Collection HAL")
 
-uploaded_file = st.file_uploader("📄 Fichier auteurs (facultatif), doit contenir au moins une colonne "Nom" et une colonne "Prénom"", type=["csv","xlsx"])
+uploaded_file = st.file_uploader("📄 Fichier auteurs (facultatif), doit contenir au moins une colonne Nom et une colonne Prénom", type=["csv","xlsx"])
 col1, col2 = st.columns(2)
 current_year = datetime.datetime.now().year
 min_birth = col1.number_input("Année naissance min. (IdRef)", 1900, current_year, 1920)
