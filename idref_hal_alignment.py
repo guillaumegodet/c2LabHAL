@@ -1,4 +1,4 @@
-# streamlit_app_idref_hal_multimode_fixed.py
+
 import streamlit as st
 import pandas as pd
 import requests
@@ -307,33 +307,10 @@ def export_xlsx(fusion, idref_df=None, hal_df=None, params=None):
 # =========================
 # INTERFACE
 # =========================
-def add_sidebar_menu():
-    st.sidebar.header("À Propos")
-    st.sidebar.info(
-        """
-        **c2LabHAL - Version CSV** :
-        Cet outil permet de comparer une liste de publications (fournie via un fichier CSV contenant au minimum les colonnes 'doi' et 'Title')
-        avec une collection HAL spécifique. Il enrichit également les données avec Unpaywall et les permissions de dépôt.
-        """
-    )
-    st.sidebar.markdown("---")
    
-    st.sidebar.header("Autres applications c2LabHAL")
-    st.sidebar.markdown("📖 [c2LabHAL - Application Principale](https://c2labhal.streamlit.app/)")
-    st.sidebar.markdown("🏛️ [c2LabHAL version Nantes Université](https://c2labhal-nantes.streamlit.app/)")
-    st.sidebar.markdown("🔗 [Alignez une liste de chercheurs avec IdRef et HAL](https://c2labhal-idref-hal-alignment.streamlit.app/)")
+st.title("🔗 Alignement Annuaire de chercheurs ↔ IdRef ↔ Collection HAL")
 
-
-    st.sidebar.markdown("---")
-   
-    st.sidebar.markdown("Présentation du projet :")
-    st.sidebar.markdown("[📊 Voir les diapositives](https://slides.com/guillaumegodet/deck-d5bc03#/2)")
-    st.sidebar.markdown("Code source :")
-    st.sidebar.markdown("[🐙 Voir sur GitHub](https://github.com/GuillaumeGodet/c2labhal)")
-    
-    st.title("🔗 Alignement Annuaire de chercheurs ↔ IdRef ↔ Collection HAL")
-
-uploaded_file = st.file_uploader("📄 Fichier auteurs (facultatif)", type=["csv","xlsx"])
+uploaded_file = st.file_uploader("📄 Fichier auteurs (facultatif), doit contenir au moins une colonne "Nom" et une colonne "Prénom"", type=["csv","xlsx"])
 col1, col2 = st.columns(2)
 current_year = datetime.datetime.now().year
 min_birth = col1.number_input("Année naissance min. (IdRef)", 1900, current_year, 1920)
@@ -352,11 +329,27 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"Erreur lors de la lecture du fichier : {e}")
         st.stop()
+
     st.write("Aperçu du fichier téléversé :")
     st.dataframe(df_preview.head(5))
     cols = df_preview.columns.tolist()
-    col_nom_choice = st.selectbox("Sélectionner la colonne contenant le NOM", options=cols)
-    col_pre_choice = st.selectbox("Sélectionner la colonne contenant le PRÉNOM", options=cols)
+
+    # --- Autodétection intelligente des colonnes Nom / Prénom ---
+    def normalize_col(c):
+        c = unicodedata.normalize("NFD", str(c))
+        return "".join(ch for ch in c if unicodedata.category(ch) != "Mn").lower()
+
+    nom_candidates = [c for c in cols if any(k in normalize_col(c) for k in ["nom", "last", "surname"])]
+    pre_candidates = [c for c in cols if any(k in normalize_col(c) for k in ["prenom", "first", "given"])]
+
+    default_nom = nom_candidates[0] if nom_candidates else cols[0]
+    default_pre = pre_candidates[0] if pre_candidates else (cols[1] if len(cols) > 1 else cols[0])
+
+    st.info(f"🔍 Colonnes détectées automatiquement : **Nom → {default_nom}**, **Prénom → {default_pre}**")
+
+    col_nom_choice = st.selectbox("Sélectionner la colonne contenant le NOM", options=cols, index=cols.index(default_nom))
+    col_pre_choice = st.selectbox("Sélectionner la colonne contenant le PRÉNOM", options=cols, index=cols.index(default_pre))
+
 
 collection_code = st.text_input("🏛️ Code collection HAL (facultatif)")
 
