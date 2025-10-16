@@ -34,7 +34,7 @@ except ImportError:
 # =========================
 # CONFIG
 # =========================
-st.set_page_config(page_title="Alignement IdRef ↔ HAL (multi-mode)", layout="wide")
+st.set_page_config(page_title="Alignement Annuaire de chercheurs ↔ IdRef ↔ Collection HAL", layout="wide")
 HAL_SEARCH_API = "https://api.archives-ouvertes.fr/search/"
 HAL_AUTHOR_API = "https://api.archives-ouvertes.fr/ref/author/"
 FIELDS_LIST = "docid,form_i,person_i,lastName_s,firstName_s,valid_s,idHal_s,halId_s,idrefId_s,orcidId_s,emailDomain_s"
@@ -307,10 +307,15 @@ def export_xlsx(fusion, idref_df=None, hal_df=None, params=None):
 # =========================
 # INTERFACE
 # =========================
-st.title("🔗 Alignement IdRef ↔ HAL — Multi-mode (sélection colonnes après upload)")
+st.title("🔗 Alignement Annuaire de chercheurs ↔ IdRef ↔ Collection HAL")
 
 uploaded_file = st.file_uploader("📄 Fichier auteurs (facultatif)", type=["csv","xlsx"])
-collection_code = st.text_input("🏛️ Code collection HAL (facultatif)")
+col1, col2 = st.columns(2)
+current_year = datetime.datetime.now().year
+min_birth = col1.number_input("Année naissance min. (IdRef)", 1900, current_year, 1920)
+min_death = col2.number_input("Année décès min. (IdRef)", 1900, current_year + 5, 2005)
+
+
 
 # default params
 col_nom_choice = None
@@ -329,10 +334,7 @@ if uploaded_file is not None:
     col_nom_choice = st.selectbox("Sélectionner la colonne contenant le NOM", options=cols)
     col_pre_choice = st.selectbox("Sélectionner la colonne contenant le PRÉNOM", options=cols)
 
-col1, col2 = st.columns(2)
-current_year = datetime.datetime.now().year
-min_birth = col1.number_input("Année naissance min. (IdRef)", 1900, current_year, 1920)
-min_death = col2.number_input("Année décès min. (IdRef)", 1900, current_year + 5, 2005)
+collection_code = st.text_input("🏛️ Code collection HAL (facultatif)")
 
 col3, col4 = st.columns(2)
 year_min = col3.number_input("Année min des publications HAL", 1900, current_year, 2015)
