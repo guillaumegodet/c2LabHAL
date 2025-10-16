@@ -391,6 +391,26 @@ if f and coll:
         ids=extract_author_ids(pubs)
         hal_auths=fetch_author_details_batch(ids,FIELDS_LIST)
         hal_df=pd.DataFrame(hal_auths)
+        # 🔹 Nettoyage du champ idrefId_s pour extraire uniquement le PPN (ex: 08686887X)
+        import re
+        
+        if "idrefId_s" in hal_df.columns:
+            def extract_idref_ppn(val):
+                """Nettoie les valeurs idrefId_s venant de HAL (liste, URL, etc.)."""
+                if pd.isna(val):
+                    return None
+                s = str(val)
+                # extraire les séquences de 7–10 caractères alphanumériques en fin d’URL
+                ids = re.findall(r"([0-9]{6,}[A-ZX]?)", s)
+                if not ids:
+                    ids = re.findall(r"idref([0-9]{6,}[A-ZX]?)", s)
+                return "|".join(sorted(set(ids))) if ids else None
+        
+            hal_df["idrefId_s"] = hal_df["idrefId_s"].apply(extract_idref_ppn)
+
+
+
+        
         if "orcidId_s" in hal_df:
             hal_df["orcidId_s"]=hal_df["orcidId_s"].astype(str).str.extract(r"(\d{4}-\d{4}-\d{4}-\d{4})")[0]
         hal_df=enrich_hal_rows_with_idref_parallel(hal_df,minb,mind,max_workers=threads)
