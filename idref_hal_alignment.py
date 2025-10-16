@@ -33,7 +33,7 @@ except ImportError:
 # =========================
 # CONFIG
 # =========================
-st.set_page_config(page_title="Alignement IdRef ↔ HAL (Parallélisé)", layout="wide")
+st.set_page_config(page_title="Alignement Annuaire de chercheurs ↔ IdRef ↔ Collection HAL", layout="wide")
 HAL_SEARCH_API = "https://api.archives-ouvertes.fr/search/"
 HAL_AUTHOR_API = "https://api.archives-ouvertes.fr/ref/author/"
 FIELDS_LIST = "docid,form_i,person_i,lastName_s,firstName_s,valid_s,idHal_s,halId_s,idrefId_s,orcidId_s,emailDomain_s"
@@ -336,15 +336,18 @@ def export_xlsx(fusion, idref_df, hal_df, params):
 # =========================
 # INTERFACE
 # =========================
-st.title("🔗 Alignement IdRef ↔ HAL (Parallélisé)")
+st.title("🔗 Alignement Annuaire de chercheurs ↔ IdRef ↔ Collection HAL")
 f = st.file_uploader("📁 Fichier (.csv ou .xlsx)", type=["csv","xlsx"])
-coll = st.text_input("🏛️ Code collection HAL","")
 c1,c2=st.columns(2)
 cur=datetime.datetime.now().year
 minb=c1.number_input("Année naissance min.",1900,cur,1920)
 mind=c2.number_input("Année décès min.",1900,cur+5,2005)
+
+coll = st.text_input("🏛️ Code collection HAL","")
+
 c3,c4=st.columns(2)
 ymin=c3.number_input("Année min HAL",1900,cur,2015)
+
 ymax=c4.number_input("Année max HAL",1900,cur+5,cur)
 threads=st.slider("Threads IdRef HAL",2,16,8)
 if f and coll:
@@ -352,7 +355,7 @@ if f and coll:
     cols = df.columns.tolist()
     col_nom = st.selectbox("Colonne Nom", cols)
     col_pre = st.selectbox("Colonne Prénom", cols)
-    if st.button("🚀 Lancer l'extraction complète"):
+    if st.button("🚀 Lancer l'extraction"):
         # Étape 1 : IdRef fichier
         rows = []
         prog = st.progress(0, text="Recherche IdRef pour fichier...")
@@ -393,7 +396,7 @@ if f and coll:
         hal_df=enrich_hal_rows_with_idref_parallel(hal_df,minb,mind,max_workers=threads)
 
         # Étape 3 : fusion floue
-        st.info("⚙️ Fusion floue...")
+        st.info("⚙️ Fusion...")
         fusion=fuzzy_merge_file_hal(idref_df,hal_df,85)
         st.dataframe(fusion.head(50))
         st.success("✅ Fusion terminée")
