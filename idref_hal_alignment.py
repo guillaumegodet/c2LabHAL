@@ -461,12 +461,27 @@ if st.button("🚀 Lancer l’analyse"):
         # Nettoyage idrefId_s -> extraire PPN(s)
         if "idrefId_s" in hal_df.columns:
             def extract_idref_ppn(val):
-                if pd.isna(val):
+                """Nettoie et extrait les identifiants IdRef (PPN) de HAL, même si c’est une liste."""
+                if val is None:
                     return None
+                # Si c'est un array/liste, on le convertit en chaîne
+                if isinstance(val, (list, tuple, set)):
+                    val = " ".join(map(str, val))
+                try:
+                    # Si c'est un NaN pandas
+                    if pd.isna(val):
+                        return None
+                except Exception:
+                    pass
                 s = str(val)
+                # Extraire les séquences de chiffres (PPN)
                 ids_found = re.findall(r"([0-9]{6,}[A-ZX]?)", s)
-                return "|".join(sorted(set(ids_found))) if ids_found else None
+                if ids_found:
+                    return "|".join(sorted(set(ids_found)))
+                return None
+        
             hal_df["idrefId_s"] = hal_df["idrefId_s"].apply(extract_idref_ppn)
+
 
         # Nettoyage orcid
         if "orcidId_s" in hal_df.columns:
