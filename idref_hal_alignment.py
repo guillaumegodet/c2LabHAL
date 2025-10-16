@@ -499,7 +499,7 @@ if st.button("🚀 Lancer l’analyse"):
         idref_df = pd.DataFrame(res)
 
         # Fusion floue
-        st.info("⚙️ Fusion floue...")
+        st.info("⚙️ Fusion...")
         fusion = fuzzy_merge_file_hal(idref_df, hal_df, threshold=similarity_threshold)
         st.dataframe(fusion.head(50))
         st.success("✅ Fusion terminée")
