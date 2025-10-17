@@ -280,7 +280,7 @@ def enrich_hal_rows_with_idref_parallel(hal_df, min_birth, min_death, max_worker
         for k,v in res.items():hal_df.at[i,k]=v
     return hal_df
 
-# ===== FUZZY MERGE =====
+# ===== FUZZY MERGE (MODIFIED COLUMN SELECTION LOGIC) =====
 def fuzzy_merge_file_hal(df_file, df_hal, threshold=85):
     """
     Fait une fusion floue des auteurs du fichier (enrichi IdRef) avec les auteurs HAL (enrichi IdRef).
@@ -298,12 +298,8 @@ def fuzzy_merge_file_hal(df_file, df_hal, threshold=85):
     df_hal["norm_full"] = (df_hal["firstName_s"].fillna("").apply(normalize_text)+" "+df_hal["lastName_s"].fillna("").apply(normalize_text)).str.strip()
     df_hal["__matched"] = False
     
-    # Columns from file/IdRef enrichment
-    file_cols_keep = [c for c in df_file.columns if c not in ["norm_full", "norm_first", "norm_last"]]
-    
-    # Final output columns
-    cols_out = [c for c in file_cols_keep if c not in hal_keep] # Start with file-specific cols
-    cols_out += [c for c in ["Nom","Prénom","idref_ppn_list","idref_status","nb_match","match_info","alt_names","idref_orcid","idref_description","idref_idhal"] if c not in cols_out]
+    # Columns from file/IdRef enrichment that are not Nom/Prénom
+    file_cols_keep = [c for c in df_file.columns if c not in ["Nom", "Prénom", "norm_full"]]
     
     # Add HAL columns with prefix
     hal_pref = [f"HAL_{c}" for c in hal_keep if c not in ["idref_ppn_list","idref_status","nb_match","match_info","alt_names","idref_orcid","idref_description","idref_idhal"]]
@@ -316,10 +312,13 @@ def fuzzy_merge_file_hal(df_file, df_hal, threshold=85):
     total_file = len(df_file)
     for i, fr in df_file.iterrows():
         # Initialize row with file data
-        row = {c: fr.get(c) for c in file_cols_keep}
-        # Add IdRef enrichment columns from file if not already there (Nom/Prénom are there)
+        row = {"Nom": fr.get("Nom"), "Prénom": fr.get("Prénom")}
+        for c in file_cols_keep:
+            row[c] = fr.get(c)
+
+        # Add IdRef enrichment columns from file
         for c in ["idref_ppn_list","idref_status","nb_match","match_info","alt_names","idref_orcid","idref_description","idref_idhal"]:
-            if c not in row: row[c] = fr.get(c)
+             row[c] = fr.get(c)
 
         # Initialize HAL columns to None
         for c_hal_pref in hal_pref:
@@ -363,7 +362,7 @@ def fuzzy_merge_file_hal(df_file, df_hal, threshold=85):
     st.info("➕ Ajout des auteurs HAL non-appariés...")
     for _, h in df_hal[df_hal["__matched"] == False].iterrows():
         # Initialize row with Nom/Prénom from HAL
-        row = {c: None for c in file_cols_keep + hal_pref + ["source","match_score"]}
+        row = {c: None for c in file_cols_keep + hal_pref + ["source","match_score", "Nom", "Prénom"]}
         row["Nom"] = h.get("lastName_s") or ""
         row["Prénom"] = h.get("firstName_s") or ""
 
@@ -378,12 +377,43 @@ def fuzzy_merge_file_hal(df_file, df_hal, threshold=85):
         row["match_score"] = None
         merged.append(row)
 
-    df_final = pd.DataFrame(merged)
-    # Ensure column order is clean (Nom, Prénom, IdRef columns, HAL columns, match score, source)
-    final_cols_order = [c for c in ["Nom", "Prénom"] + [f for f in cols_out if f not in ["Nom", "Prénom"]] + hal_pref + ["match_score", "source"] if c in df_final.columns]
+    # 3. Final column selection and reordering based on user request
+    CORE_REQUESTED_COLUMNS_ORDER = [
+        "Nom",
+        "Prénom",
+        "idref_ppn_list",
+        "HAL_idHal_s",
+        "idref_idhal",
+        "idref_orcid",
+        "HAL_orcidId_s",
+        "HAL_valid_s",
+        "HAL_form_i",
+        "HAL_person_i",
+        "HAL_idrefId_s",
+        "HAL_emailDomain_s",
+        "source",
+    ]
+
+    # Get the list of original file columns (excluding IdRef/HAL standard ones)
+    # We use df_file columns here to preserve the original column names and count
+    file_specific_cols = [c for c in df_file.columns if c not in ["Nom", "Prénom", "norm_full"] and not c.startswith("idref_")]
     
-    df_final = df_final.loc[:, final_cols_order]
-    df_final = df_final.loc[:, ~df_final.columns.duplicated()] # Remove duplicates if any
+    # Build the final column order: Nom, Prénom, [File Specific], [Requested Core], match_score
+    final_cols_order = (
+        ["Nom", "Prénom"] + 
+        file_specific_cols + 
+        [c for c in CORE_REQUESTED_COLUMNS_ORDER if c not in ["Nom", "Prénom"]] + 
+        ["match_score"]
+    )
+
+    df_final = pd.DataFrame(merged)
+    
+    # Filter and reorder
+    final_cols_to_keep = [c for c in final_cols_order if c in df_final.columns]
+    
+    df_final = df_final.loc[:, final_cols_to_keep]
+    df_final = df_final.loc[:, ~df_final.columns.duplicated()] # Final cleanup
+    
     return df_final
 
 
@@ -393,9 +423,13 @@ def export_xlsx(fusion,idref_df=None,hal_df=None,params=None):
     # Use selected engine or fallback
     engine_to_use = EXCEL_ENGINE or "xlsxwriter"
     with pd.ExcelWriter(out,engine=engine_to_use) as w:
+        # Onglet 1 : Les résultats de la fusion
         fusion.to_excel(w,sheet_name="Résultats",index=False)
+        # Onglet 2 : L'extraction du fichier/IdRef
         if idref_df is not None:idref_df.to_excel(w,sheet_name="extraction IdRef",index=False)
+        # Onglet 3 : L'extraction des auteurs HAL
         if hal_df is not None:hal_df.to_excel(w,sheet_name="extraction HAL",index=False)
+        # Onglet 4 : Les paramètres
         if params is not None:pd.DataFrame([params]).to_excel(w,sheet_name="Paramètres",index=False)
     out.seek(0);return out
 
@@ -508,7 +542,7 @@ if st.button("🚀 Lancer l’analyse"):
         st.success("Extraction HAL et enrichissement IdRef terminés ✅")
         st.dataframe(hal_df.head(20))
         params = {"structures":structure_ids,"year_min":ymin,"year_max":ymax}
-        xlsx = export_xlsx(hal_df,fusion=hal_df,hal_df=hal_df,params=params) # Correction: fusion=hal_df passed to export_xlsx
+        xlsx = export_xlsx(hal_df,fusion=hal_df,hal_df=hal_df,params=params) 
         st.download_button("⬇️ Télécharger XLSX",xlsx,file_name="hal_idref_structures.xlsx")
 
     # MODE 1 — FICHIER SEUL
@@ -556,7 +590,7 @@ if st.button("🚀 Lancer l’analyse"):
         idref_df = pd.DataFrame(res)
         st.dataframe(idref_df.head(20))
         params={"mode":"Fichier seul"}
-        xlsx = export_xlsx(idref_df,idref_df=idref_df,params=params) # Correction: fusion=idref_df passed to export_xlsx
+        xlsx = export_xlsx(idref_df,fusion=idref_df,idref_df=idref_df,params=params)
         st.download_button("⬇️ Télécharger XLSX",xlsx,file_name="idref_only.xlsx")
 
     # MODE 3 — FUSION
@@ -631,6 +665,5 @@ if st.button("🚀 Lancer l’analyse"):
         params = {"structures": structure_ids, "year_min": ymin, "year_max": ymax,
                   "similarity_threshold": similarity_threshold, "threads": threads,
                   "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-        # Cet appel génère bien les 3 onglets (Résultats, extraction IdRef, extraction HAL)
         xlsx = export_xlsx(fusion,idref_df=idref_df,hal_df=hal_df,params=params) 
         st.download_button("⬇️ Télécharger XLSX fusion",xlsx,file_name="fusion_idref_hal.xlsx")
