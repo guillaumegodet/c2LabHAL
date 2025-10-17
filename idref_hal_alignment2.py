@@ -9,8 +9,8 @@ import re
 from io import BytesIO
 from difflib import SequenceMatcher
 from pydref import Pydref
-from urllib.parse import urlencode # Added for consistency, though not strictly used in V2 logic
-from bs4 import BeautifulSoup # Added for advanced IdRef notice parsing
+from urllib.parse import urlencode 
+from bs4 import BeautifulSoup 
 
 # ----- optional fuzzy match -----
 try:
@@ -27,7 +27,7 @@ except ImportError:
         import openpyxl
         EXCEL_ENGINE = "openpyxl"
     except ImportError:
-        EXCEL_ENGINE = None # Fallback if neither is available (though likely one is)
+        EXCEL_ENGINE = None 
 
 # ===== CONFIG =====
 st.set_page_config(page_title="Alignement Annuaire de chercheurs ↔ IdRef ↔ Collection HAL", layout="wide")
@@ -162,7 +162,7 @@ def fetch_author_details_batch(ids, fields, batch_size=20):
     prog.empty()
     return authors
 
-# ===== IDREF enrichissement pour HAL (UPDATED: Advanced logic from V1) =====
+# ===== IDREF enrichissement pour HAL (Advanced logic) =====
 def process_hal_row(row, min_birth, min_death):
     hal_first = row.get("firstName_s") or ""
     hal_last = row.get("lastName_s") or ""
@@ -280,7 +280,7 @@ def enrich_hal_rows_with_idref_parallel(hal_df, min_birth, min_death, max_worker
         for k,v in res.items():hal_df.at[i,k]=v
     return hal_df
 
-# ===== FUZZY MERGE (ADDED from V1) =====
+# ===== FUZZY MERGE =====
 def fuzzy_merge_file_hal(df_file, df_hal, threshold=85):
     """
     Fait une fusion floue des auteurs du fichier (enrichi IdRef) avec les auteurs HAL (enrichi IdRef).
@@ -508,7 +508,7 @@ if st.button("🚀 Lancer l’analyse"):
         st.success("Extraction HAL et enrichissement IdRef terminés ✅")
         st.dataframe(hal_df.head(20))
         params = {"structures":structure_ids,"year_min":ymin,"year_max":ymax}
-        xlsx = export_xlsx(hal_df,hal_df=hal_df,params=params)
+        xlsx = export_xlsx(hal_df,fusion=hal_df,hal_df=hal_df,params=params) # Correction: fusion=hal_df passed to export_xlsx
         st.download_button("⬇️ Télécharger XLSX",xlsx,file_name="hal_idref_structures.xlsx")
 
     # MODE 1 — FICHIER SEUL
@@ -556,10 +556,10 @@ if st.button("🚀 Lancer l’analyse"):
         idref_df = pd.DataFrame(res)
         st.dataframe(idref_df.head(20))
         params={"mode":"Fichier seul"}
-        xlsx = export_xlsx(idref_df,idref_df=idref_df,params=params)
+        xlsx = export_xlsx(idref_df,idref_df=idref_df,params=params) # Correction: fusion=idref_df passed to export_xlsx
         st.download_button("⬇️ Télécharger XLSX",xlsx,file_name="idref_only.xlsx")
 
-    # MODE 3 — FUSION (UPDATED to use fuzzy_merge_file_hal)
+    # MODE 3 — FUSION
     elif file_provided and hal_provided:
         st.header("🧩 Mode 3 : Fichier + HAL (fusion complète)")
         
@@ -631,5 +631,6 @@ if st.button("🚀 Lancer l’analyse"):
         params = {"structures": structure_ids, "year_min": ymin, "year_max": ymax,
                   "similarity_threshold": similarity_threshold, "threads": threads,
                   "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-        xlsx = export_xlsx(fusion,idref_df=idref_df,hal_df=hal_df,params=params)
+        # Cet appel génère bien les 3 onglets (Résultats, extraction IdRef, extraction HAL)
+        xlsx = export_xlsx(fusion,idref_df=idref_df,hal_df=hal_df,params=params) 
         st.download_button("⬇️ Télécharger XLSX fusion",xlsx,file_name="fusion_idref_hal.xlsx")
