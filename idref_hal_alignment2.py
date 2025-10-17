@@ -537,7 +537,7 @@ if st.button("🚀 Lancer l’analyse"):
         initial_count = len(hal_df)
         if "valid_s" in hal_df.columns:
             hal_df = hal_df[hal_df["valid_s"].isin(["INCOMING", "PREFERRED"])]
-            st.info(f"Filtre HAL appliqué : {len(hal_df)} formes-auteurs (sur {initial_count} initialement) avec statut INCOMING ou PREFERRED.")
+            st.info(f"Filtre HAL appliqué : **{len(hal_df)}** formes-auteurs (sur {initial_count} initialement) avec statut **INCOMING** ou **PREFERRED**.")
         
         # Ensure name columns exist for parallel enrichment
         if "lastName_s" not in hal_df.columns: hal_df["lastName_s"] = None
@@ -547,7 +547,8 @@ if st.button("🚀 Lancer l’analyse"):
         st.success("Extraction HAL et enrichissement IdRef terminés ✅")
         st.dataframe(hal_df.head(20))
         params = {"structures":structure_ids,"year_min":ymin,"year_max":ymax}
-        xlsx = export_xlsx(hal_df,fusion=hal_df,hal_df=hal_df,params=params) 
+        # CORRECTION DU TYPEERROR: suppression de l'argument mot-clé fusion=hal_df redondant
+        xlsx = export_xlsx(hal_df, hal_df=hal_df, params=params) 
         st.download_button("⬇️ Télécharger XLSX",xlsx,file_name="hal_idref_structures.xlsx")
 
     # MODE 1 — FICHIER SEUL
@@ -595,7 +596,8 @@ if st.button("🚀 Lancer l’analyse"):
         idref_df = pd.DataFrame(res)
         st.dataframe(idref_df.head(20))
         params={"mode":"Fichier seul"}
-        xlsx = export_xlsx(idref_df,fusion=idref_df,idref_df=idref_df,params=params)
+        # CORRECTION DU TYPEERROR: suppression de l'argument mot-clé fusion=idref_df redondant
+        xlsx = export_xlsx(idref_df, idref_df=idref_df, params=params)
         st.download_button("⬇️ Télécharger XLSX",xlsx,file_name="idref_only.xlsx")
 
     # MODE 3 — FUSION
@@ -617,7 +619,7 @@ if st.button("🚀 Lancer l’analyse"):
         initial_count = len(hal_df)
         if "valid_s" in hal_df.columns:
             hal_df = hal_df[hal_df["valid_s"].isin(["INCOMING", "PREFERRED"])]
-            st.info(f"Filtre HAL appliqué : {len(hal_df)} formes-auteurs (sur {initial_count} initialement) avec statut INCOMING ou PREFERRED.")
+            st.info(f"Filtre HAL appliqué : **{len(hal_df)}** formes-auteurs (sur {initial_count} initialement) avec statut **INCOMING** ou **PREFERRED**.")
         
         if "lastName_s" not in hal_df.columns: hal_df["lastName_s"] = None
         if "firstName_s" not in hal_df.columns: hal_df["firstName_s"] = None
