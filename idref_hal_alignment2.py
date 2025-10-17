@@ -299,7 +299,7 @@ def fuzzy_merge_file_hal(df_file, df_hal, threshold=85):
     df_hal["__matched"] = False
     
     # Columns from file/IdRef enrichment that are not Nom/Prénom
-    file_cols_keep = [c for c in df_file.columns if c not in ["Nom", "Prénom", "norm_full"]]
+    file_cols_keep = [c for c in df_file.columns if c not in ["Nom", "Prénom", "norm_full"] and not c.startswith("idref_")]
     
     # Add HAL columns with prefix
     hal_pref = [f"HAL_{c}" for c in hal_keep if c not in ["idref_ppn_list","idref_status","nb_match","match_info","alt_names","idref_orcid","idref_description","idref_idhal"]]
@@ -395,8 +395,7 @@ def fuzzy_merge_file_hal(df_file, df_hal, threshold=85):
     ]
 
     # Get the list of original file columns (excluding IdRef/HAL standard ones)
-    # We use df_file columns here to preserve the original column names and count
-    file_specific_cols = [c for c in df_file.columns if c not in ["Nom", "Prénom", "norm_full"] and not c.startswith("idref_")]
+    file_specific_cols = [c for c in df_file.columns if c not in ["Nom", "Prénom", "norm_full", "idref_ppn_list", "idref_status", "nb_match", "match_info", "alt_names", "idref_orcid", "idref_description", "idref_idhal"]]
     
     # Build the final column order: Nom, Prénom, [File Specific], [Requested Core], match_score
     final_cols_order = (
@@ -500,7 +499,7 @@ if st.button("🚀 Lancer l’analyse"):
         st.error("Sélectionnez d'abord les colonnes Nom et Prénom.")
         st.stop()
 
-    # --- Nettoyage des fonctions de nettoyage (remis ici car V2 n'avait pas de nettoyage orcidId_s) ---
+    # --- Nettoyage des fonctions de nettoyage ---
     def clean_idref(val):
         if val is None: return None
         if isinstance(val, (list, tuple, set)): val = " ".join(map(str, val))
@@ -533,6 +532,12 @@ if st.button("🚀 Lancer l’analyse"):
         # --- Nettoyage des identifiants HAL ---
         if "idrefId_s" in hal_df.columns: hal_df["idrefId_s"] = hal_df["idrefId_s"].apply(clean_idref)
         if "orcidId_s" in hal_df.columns: hal_df["orcidId_s"] = hal_df["orcidId_s"].apply(clean_orcid)
+        
+        # --- FILTRAGE PAR STATUT (INCOMING/PREFERRED) ---
+        initial_count = len(hal_df)
+        if "valid_s" in hal_df.columns:
+            hal_df = hal_df[hal_df["valid_s"].isin(["INCOMING", "PREFERRED"])]
+            st.info(f"Filtre HAL appliqué : {len(hal_df)} formes-auteurs (sur {initial_count} initialement) avec statut INCOMING ou PREFERRED.")
         
         # Ensure name columns exist for parallel enrichment
         if "lastName_s" not in hal_df.columns: hal_df["lastName_s"] = None
@@ -607,6 +612,13 @@ if st.button("🚀 Lancer l’analyse"):
         
         if "idrefId_s" in hal_df.columns: hal_df["idrefId_s"] = hal_df["idrefId_s"].apply(clean_idref)
         if "orcidId_s" in hal_df.columns: hal_df["orcidId_s"] = hal_df["orcidId_s"].apply(clean_orcid)
+        
+        # --- FILTRAGE PAR STATUT (INCOMING/PREFERRED) ---
+        initial_count = len(hal_df)
+        if "valid_s" in hal_df.columns:
+            hal_df = hal_df[hal_df["valid_s"].isin(["INCOMING", "PREFERRED"])]
+            st.info(f"Filtre HAL appliqué : {len(hal_df)} formes-auteurs (sur {initial_count} initialement) avec statut INCOMING ou PREFERRED.")
+        
         if "lastName_s" not in hal_df.columns: hal_df["lastName_s"] = None
         if "firstName_s" not in hal_df.columns: hal_df["firstName_s"] = None
         
