@@ -554,17 +554,10 @@ mind = 2005 # Année décès min (IdRef) fixée
 threads = 8 # Nombre de threads fixé
 similarity_threshold = 85 # Seuil de similarité fixé
 
-st.header("⚙️ Paramètres") # Ajout d'un titre pour l'organisation
-
 col3, col4 = st.columns(2)
 cur = datetime.datetime.now().year
 ymin = col3.number_input("Année min HAL", 1900, cur, 2015)
 ymax = col4.number_input("Année max HAL", 1900, cur + 5, cur)
-
-st.caption(f"""
-Dates IdRef fixées : Naissance min **{minb}**, Décès min **{mind}**.  
-Paramètres de calcul fixés : Threads **{threads}**, Seuil de similarité **{similarity_threshold}%**.
-""") 
 
 
 # ===== LANCEMENT =====
