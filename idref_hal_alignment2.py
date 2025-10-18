@@ -480,7 +480,7 @@ minb = 1920 # Année naissance min (IdRef) fixée
 mind = 2005 # Année décès min (IdRef) fixée
 threads = 8 # Nombre de threads fixé
 similarity_threshold = 85 # Seuil de similarité fixé
-st.header("⚙️ Paramètres")
+
 col3,col4 = st.columns(2)
 cur = datetime.datetime.now().year
 ymin = col3.number_input("Année min HAL",1900,cur,2015)
