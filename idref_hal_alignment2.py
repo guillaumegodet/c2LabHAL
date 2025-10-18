@@ -93,7 +93,7 @@ def search_idref_for_person(full_name, min_birth, min_death):
     except Exception:
         return []
 
-# ===== HAL FUNCTIONS =====
+# ===== HAL FUNCTIONS (Extraction des formes auteurs) =====
 def fetch_publications_for_structures(struct_ids, year_min=None, year_max=None):
     """Récupère les publications liées à une ou plusieurs structures HAL (structId_i)."""
     if isinstance(struct_ids, str):
@@ -133,7 +133,7 @@ def extract_author_ids(docs, struct_ids=None):
                 if struct_ids and struct_part not in struct_ids:
                     continue
                 after_join = entry.split("_JoinSep_")[1]
-                # Modifié : on récupère l'ID complet de la forme auteur (le docid)
+                # Modifié : on récupère l'ID complet de la forme auteur (le docid) pour inclure les INCOMING
                 form_id = after_join.split("_FacetSep_")[0] 
                 
                 if form_id:
@@ -163,8 +163,10 @@ def fetch_author_details_batch(ids, fields, batch_size=20):
     prog.empty()
     return authors
 
-# ===== IDREF enrichissement pour HAL (Advanced logic) =====
+# ===== IDREF enrichment (HAL - Parallel) =====
+
 def process_hal_row(row, min_birth, min_death):
+    # ... (fonction inchangée pour l'enrichissement IdRef des auteurs HAL)
     hal_first = row.get("firstName_s") or ""
     hal_last = row.get("lastName_s") or ""
     hal_full = f"{hal_first} {hal_last}".strip()
@@ -260,6 +262,7 @@ def process_hal_row(row, min_birth, min_death):
     return result
 
 def enrich_hal_rows_with_idref_parallel(hal_df, min_birth, min_death, max_workers=8):
+    # ... (fonction inchangée pour l'enrichissement IdRef parallèle des auteurs HAL)
     hal_df = hal_df.copy()
     st.info(f"🔄 Enrichissement IdRef parallèle ({len(hal_df)} auteurs HAL)...")
     total = len(hal_df)
@@ -281,8 +284,76 @@ def enrich_hal_rows_with_idref_parallel(hal_df, min_birth, min_death, max_worker
         for k,v in res.items():hal_df.at[i,k]=v
     return hal_df
 
+
+# ===== IDREF enrichment (FILE - Parallel) - NOUVELLES FONCTIONS POUR L'ACCÉLÉRATION DU MODE 1 =====
+
+def process_file_row(row, min_birth, min_death):
+    """Effectue la recherche IdRef pour une seule ligne du fichier (utilisé en parallèle)."""
+    first = str(row.get("Prénom", "")).strip()
+    last = str(row.get("Nom", "")).strip()
+    full = f"{first} {last}".strip()
+    matches = search_idref_for_person(full, min_birth, min_death)
+    nb = len(matches)
+
+    # Récupération des données originales et initialisation des champs IdRef
+    info = {c: row.get(c) for c in row.keys() if c not in ["Nom", "Prénom"]}
+    info.update({"Nom": last, "Prénom": first, "idref_ppn_list": None, "idref_status": "not_found",
+                "nb_match": nb, "match_info": None, "alt_names": None, "idref_orcid": None,
+                "idref_description": None, "idref_idhal": None})
+
+    if nb:
+        ppns = [m.get("idref","").replace("idref","") for m in matches if m.get("idref")]
+        info["idref_ppn_list"] = "|".join(ppns)
+        info["idref_status"] = "found" if nb == 1 else "ambiguous"
+        # Afficher tous les noms trouvés pour match_info
+        info["match_info"] = "; ".join([f"{m.get('first_name','')} {m.get('last_name','')}" for m in matches])
+        desc, alt = [], []
+        orcid, idhal = None, None
+        
+        for m in matches:
+            if isinstance(m.get("description"), list): desc += m["description"]
+            if isinstance(m.get("alt_names"), list): alt += m["alt_names"]
+            for ident in m.get("identifiers", []):
+                if "orcid" in ident and not orcid: orcid = ident["orcid"]
+            if "idhal" in m and not idhal: idhal = m.get("idhal")
+        
+        info["idref_description"] = "; ".join(desc) if desc else None
+        info["alt_names"] = "; ".join(sorted(set(alt))) if alt else None
+        info["idref_orcid"] = orcid
+        info["idref_idhal"] = idhal
+        
+    return info
+
+def enrich_file_rows_with_idref_parallel(df, min_birth, min_death, max_workers=8):
+    """Gère l'exécution parallèle de la recherche IdRef pour les lignes du fichier."""
+    st.info(f"🔄 Recherche IdRef parallèle pour le fichier ({len(df)} auteurs)...")
+    total = len(df)
+    results = []
+    prog = st.progress(0)
+    
+    # Convertir en liste de dictionnaires pour un accès sûr par les threads
+    rows_list = df.to_dict('records') 
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futures = {ex.submit(process_file_row, row, min_birth, min_death): i for i, row in enumerate(rows_list)}
+        done = 0
+        for fut in concurrent.futures.as_completed(futures):
+            try:
+                results.append(fut.result())
+            except Exception as e:
+                st.warning(f"⚠️ Erreur lors du traitement d'un auteur: {e}")
+            done += 1
+            if done % 5 == 0 or done == total:
+                prog.progress(done / total)
+        
+    prog.empty()
+    st.success("Recherche IdRef terminée ✅")
+    return pd.DataFrame(results)
+
 # ===== FUZZY MERGE (MODIFIED COLUMN SELECTION LOGIC) =====
+# ... (fonction fuzzy_merge_file_hal inchangée)
 def fuzzy_merge_file_hal(df_file, df_hal, threshold=85):
+    # ... (code de la fonction fuzzy_merge_file_hal inchangé)
     """
     Fait une fusion floue des auteurs du fichier (enrichi IdRef) avec les auteurs HAL (enrichi IdRef).
     """
@@ -419,6 +490,7 @@ def fuzzy_merge_file_hal(df_file, df_hal, threshold=85):
 
 # ===== EXPORT =====
 def export_xlsx(fusion,idref_df=None,hal_df=None,params=None):
+    # ... (fonction inchangée)
     out=BytesIO()
     # Use selected engine or fallback
     engine_to_use = EXCEL_ENGINE or "xlsxwriter"
@@ -450,6 +522,7 @@ structure_ids = st.text_input(
 col_nom_choice = col_pre_choice = None
 df_preview = None
 if uploaded_file is not None:
+    # ... (code de détection inchangé)
     try:
         df_preview = pd.read_csv(uploaded_file) if uploaded_file.name.endswith(".csv") else pd.read_excel(uploaded_file)
     except Exception as e:
@@ -475,17 +548,23 @@ if uploaded_file is not None:
     col_nom_choice = st.selectbox("Colonne NOM", options=cols, index=cols.index(default_nom))
     col_pre_choice = st.selectbox("Colonne PRÉNOM", options=cols, index=cols.index(default_pre))
 
-# ===== Paramètres =====
+# ===== Paramètres FIXÉS =====
 minb = 1920 # Année naissance min (IdRef) fixée
 mind = 2005 # Année décès min (IdRef) fixée
 threads = 8 # Nombre de threads fixé
 similarity_threshold = 85 # Seuil de similarité fixé
 
-col3,col4 = st.columns(2)
-cur = datetime.datetime.now().year
-ymin = col3.number_input("Année min HAL",1900,cur,2015)
-ymax = col4.number_input("Année max HAL",1900,cur+5,cur)
+st.header("⚙️ Paramètres") # Ajout d'un titre pour l'organisation
 
+col3, col4 = st.columns(2)
+cur = datetime.datetime.now().year
+ymin = col3.number_input("Année min HAL", 1900, cur, 2015)
+ymax = col4.number_input("Année max HAL", 1900, cur + 5, cur)
+
+st.caption(f"""
+Dates IdRef fixées : Naissance min **{minb}**, Décès min **{mind}**.  
+Paramètres de calcul fixés : Threads **{threads}**, Seuil de similarité **{similarity_threshold}%**.
+""") 
 
 
 # ===== LANCEMENT =====
@@ -549,7 +628,6 @@ if st.button("🚀 Lancer l’analyse"):
         st.success("Extraction HAL et enrichissement IdRef terminés ✅")
         st.dataframe(hal_df.head(20))
         params = {"structures":structure_ids,"year_min":ymin,"year_max":ymax}
-        # CORRECTION DU TYPEERROR: suppression de l'argument mot-clé fusion=hal_df redondant
         xlsx = export_xlsx(hal_df, hal_df=hal_df, params=params) 
         st.download_button("⬇️ Télécharger XLSX",xlsx,file_name="hal_idref_structures.xlsx")
 
@@ -559,46 +637,12 @@ if st.button("🚀 Lancer l’analyse"):
         df = df_preview.copy()
         df = df.rename(columns={col_nom_choice:"Nom", col_pre_choice:"Prénom"})
         
-        res = []
-        prog = st.progress(0, text="Recherche IdRef pour le fichier...")
-        for i, r in df.iterrows():
-            first = str(r.get("Prénom", "")).strip()
-            last = str(r.get("Nom", "")).strip()
-            full = f"{first} {last}".strip()
-            matches = search_idref_for_person(full, minb, mind)
-            nb = len(matches)
-            # Initialize with non-IdRef data
-            info = {c:r.get(c) for c in df.columns if c not in ["Nom", "Prénom"]}
-            info.update({"Nom": last, "Prénom": first, "idref_ppn_list": None, "idref_status": "not_found",
-                        "nb_match": nb, "match_info": None, "alt_names": None, "idref_orcid": None,
-                        "idref_description": None, "idref_idhal": None})
-            
-            if nb:
-                ppns = [m.get("idref","").replace("idref","") for m in matches if m.get("idref")]
-                info["idref_ppn_list"] = "|".join(ppns)
-                info["idref_status"] = "found" if nb == 1 else "ambiguous"
-                info["match_info"] = "; ".join([f"{m.get('first_name','')} {m.get('last_name','')}" for m in matches])
-                desc, alt = [], []
-                orcid, idhal = None, None
-                for m in matches:
-                    if isinstance(m.get("description"), list): desc += m["description"]
-                    if isinstance(m.get("alt_names"), list): alt += m["alt_names"]
-                    for ident in m.get("identifiers", []):
-                        if "orcid" in ident and not orcid: orcid = ident["orcid"]
-                    if "idhal" in m and not idhal: idhal = m.get("idhal")
-                
-                info["idref_description"] = "; ".join(desc) if desc else None
-                info["alt_names"] = "; ".join(sorted(set(alt))) if alt else None
-                info["idref_orcid"] = orcid
-                info["idref_idhal"] = idhal
-            res.append(info)
-            prog.progress(min((i+1)/len(df), 1.0))
+        # --- UTILISATION DU PARALLÉLISME POUR ACCÉLÉRER ---
+        idref_df = enrich_file_rows_with_idref_parallel(df, minb, mind, threads)
+        # ----------------------------------------------------
 
-        prog.empty()
-        idref_df = pd.DataFrame(res)
         st.dataframe(idref_df.head(20))
         params={"mode":"Fichier seul"}
-        # CORRECTION DU TYPEERROR: suppression de l'argument mot-clé fusion=idref_df redondant
         xlsx = export_xlsx(idref_df, idref_df=idref_df, params=params)
         st.download_button("⬇️ Télécharger XLSX",xlsx,file_name="idref_only.xlsx")
 
@@ -628,48 +672,11 @@ if st.button("🚀 Lancer l’analyse"):
         
         hal_df = enrich_hal_rows_with_idref_parallel(hal_df,minb,mind,threads)
 
-        # 2. File extraction and enrichment (similar to Mode 1)
-        st.info("🔍 Recherche IdRef sur fichier...")
+        # 2. File extraction and enrichment (ACCÉLÉRATION PAR PARALLÉLISME)
         df_in = df_preview.copy()
         df_in = df_in.rename(columns={col_nom_choice:"Nom", col_pre_choice:"Prénom"})
         
-        res = []
-        prog = st.progress(0, text="Recherche IdRef pour le fichier...")
-        for i, r in df_in.iterrows():
-            first = str(r.get("Prénom", "")).strip()
-            last = str(r.get("Nom", "")).strip()
-            full = f"{first} {last}".strip()
-            matches = search_idref_for_person(full, minb, mind)
-            nb = len(matches)
-            
-            # Initialize with non-IdRef data
-            info = {c:r.get(c) for c in df_in.columns if c not in ["Nom", "Prénom"]}
-            info.update({"Nom": last, "Prénom": first, "idref_ppn_list": None, "idref_status": "not_found",
-                        "nb_match": nb, "match_info": None, "alt_names": None, "idref_orcid": None,
-                        "idref_description": None, "idref_idhal": None})
-            
-            if nb:
-                ppns = [m.get("idref","").replace("idref","") for m in matches if m.get("idref")]
-                info["idref_ppn_list"] = "|".join(ppns)
-                info["idref_status"] = "found" if nb == 1 else "ambiguous"
-                info["match_info"] = "; ".join([f"{m.get('first_name','')} {m.get('last_name','')}" for m in matches])
-                desc, alt = [], []
-                orcid, idhal = None, None
-                for m in matches:
-                    if isinstance(m.get("description"), list): desc += m["description"]
-                    if isinstance(m.get("alt_names"), list): alt += m["alt_names"]
-                    for ident in m.get("identifiers", []):
-                        if "orcid" in ident and not orcid: orcid = ident["orcid"]
-                    if "idhal" in m and not idhal: idhal = m.get("idhal")
-                
-                info["idref_description"] = "; ".join(desc) if desc else None
-                info["alt_names"] = "; ".join(sorted(set(alt))) if alt else None
-                info["idref_orcid"] = orcid
-                info["idref_idhal"] = idhal
-            res.append(info)
-            prog.progress(min((i+1)/len(df_in), 1.0))
-        prog.empty()
-        idref_df = pd.DataFrame(res)
+        idref_df = enrich_file_rows_with_idref_parallel(df_in, minb, mind, threads)
         
         # 3. Fuzzy Merge
         st.info("⚙️ Fusion floue...")
