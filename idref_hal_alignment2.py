@@ -133,11 +133,11 @@ def extract_author_ids(docs, struct_ids=None):
                 if struct_ids and struct_part not in struct_ids:
                     continue
                 after_join = entry.split("_JoinSep_")[1]
-                person_block = after_join.split("_FacetSep_")[0]
-                # ex : 414751-863157 → 863157
-                person_i = person_block.split("-")[-1]
-                if person_i.isdigit():
-                    ids.add(person_i)
+                # Modifié : on récupère l'ID complet de la forme auteur (le docid)
+                form_id = after_join.split("_FacetSep_")[0] 
+                
+                if form_id:
+                    ids.add(form_id)
             except Exception:
                 continue
     return list(sorted(ids))
@@ -149,7 +149,8 @@ def fetch_author_details_batch(ids, fields, batch_size=20):
     prog = st.progress(0, text="📦 Téléchargement des formes-auteurs HAL...")
     for i in range(0, total, batch_size):
         batch = ids[i:i+batch_size]
-        q = " OR ".join([f'person_i:\"{x}\"' for x in batch])
+        # CORRECTION : Utilisation de docid au lieu de person_i pour interroger l'API
+        q = " OR ".join([f'docid:\"{x}\"' for x in batch]) 
         params = {"q": q, "wt": "json", "fl": fields, "rows": batch_size}
         try:
             r = requests.get(HAL_AUTHOR_API, params=params)
