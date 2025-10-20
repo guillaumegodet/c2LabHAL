@@ -61,6 +61,7 @@ class Pydref(object):
             if r.status_code != 200:
                 print("Error in getting notice {} : {}".format(idref, r.text))
                 return {}
+            # Correction: retourner le contenu XML pour traitement
             return r.text
         except:
             print("Error in getting notice {}".format(idref))
@@ -93,7 +94,11 @@ class Pydref(object):
             for future in as_completed(future_to_ppn):
                 ppn = future_to_ppn[future]
                 try:
-                    notices[ppn] = future.result()
+                    notice_content = future.result()
+                    # Correction pour le parsing XML : suppression du namespace
+                    if notice_content:
+                        notice_content = notice_content.replace('xmlns="http://www.loc.gov/MARC21/slim"', '')
+                    notices[ppn] = notice_content
                 except Exception:
                     notices[ppn] = {}
 
@@ -104,22 +109,29 @@ class Pydref(object):
                 notice = notices.get(ppn)
                 if not notice:
                     continue
-                soup = BeautifulSoup(notice, 'lxml')
+                
+                # Utilisation explicite du parser 'xml' pour le MARCXML
+                soup = BeautifulSoup(notice, 'xml') 
+                
                 person_name = self.get_name_from_idref_notice(soup)
                 person['last_name'] = person_name.get("last_name")
                 person['first_name'] = person_name.get("first_name")
                 person['full_name'] = f"{person['first_name']} {person['last_name']}".strip()
                 person['full_name2'] = f"{person['last_name']} {person['first_name']}".strip()
-                exact_fullname = [normalize(person['full_name']), normalize(person['full_name2'])]
+                
+                # 'exact_fullname_normalized' est utilisé ici comme une liste de noms normalisés
+                # à comparer avec la requête.
+                exact_fullname_normalized = [normalize(person['full_name']), normalize(person['full_name2'])]
 
                 alt_names = self.get_alternative_names_from_idref_notice(soup)
                 person['alt_names'] = alt_names
                 for alt in alt_names:
-                    exact_fullname.append(normalize(alt))
+                    exact_fullname_normalized.append(normalize(alt))
 
-                if normalize(query) not in exact_fullname:
-                    print(f'no fullname/variant match for {query} vs {exact_fullname}')
+                if normalize(query) not in exact_fullname_normalized:
+                    print(f'no fullname/variant match for {query} vs {exact_fullname_normalized}')
                     continue
+                
                 birth, death = self.get_birth_and_death_date_from_idref_notice(soup)
                 if birth:
                     person['birth_date'] = birth
@@ -136,6 +148,13 @@ class Pydref(object):
 
                 identifiers = self.get_identifiers_from_idref_notice(soup)
                 person['identifiers'] = identifiers
+                
+                # Correction: Ajouter idhal et orcid à la racine du dict 'person'
+                for ident in identifiers:
+                    if 'orcid' in ident:
+                        person['orcid'] = ident['orcid']
+                    if 'idhal' in ident:
+                        person['idhal'] = ident['idhal'] # Ajout de la clé 'idhal' à la racine
 
                 skip = False
                 person['description'] = self.get_description_from_idref_notice(soup)
@@ -245,37 +264,27 @@ class Pydref(object):
 
             if (datafield.attrs['tag'] == '035'):
             
-            # 1. Vérification ORCID
-            is_ORCID = any(
-                subfield.text.strip().upper() == 'ORCID' 
-                for subfield in datafield.find_all("subfield", attrs={'code': '2'})
-            )
-            if is_ORCID:
-                subfield_a = datafield.find("subfield", attrs={'code': 'a'})
-                if subfield_a:
-                    identifiers.append({'orcid': subfield_a.text.strip()})
-            
-            # 2. Vérification HAL (IdHAL)
-            is_HAL = any(
-                subfield.text.strip().upper() == 'HAL' 
-                for subfield in datafield.find_all("subfield", attrs={'code': '2'})
-            )
-            if is_HAL:
-                subfield_a = datafield.find("subfield", attrs={'code': 'a'})
-                if subfield_a:
-                    identifiers.append({'idhal': subfield_a.text.strip()})
-            if (datafield.attrs['tag'] == '035'):
-                is_ORCID = False
-                for subfield in datafield.findAll("subfield"):
-                    if subfield.text.strip().upper() == 'ORCID':
-                        is_ORCID = True
-                        break
-                if(is_ORCID):
-                    for subfield in datafield.findAll("subfield"):
-                        if subfield.attrs['code'] == 'a':
-                            identifiers.append({'orcid': subfield.text.strip()})
-                            break
-
+                # 1. Vérification ORCID (logique correcte)
+                is_ORCID = any(
+                    subfield.text.strip().upper() == 'ORCID' 
+                    for subfield in datafield.find_all("subfield", attrs={'code': '2'})
+                )
+                if is_ORCID:
+                    subfield_a = datafield.find("subfield", attrs={'code': 'a'})
+                    if subfield_a:
+                        identifiers.append({'orcid': subfield_a.text.strip()})
+                
+                # 2. Vérification HAL (IdHAL) (logique correcte)
+                is_HAL = any(
+                    subfield.text.strip().upper() == 'HAL' 
+                    for subfield in datafield.find_all("subfield", attrs={'code': '2'})
+                )
+                if is_HAL:
+                    subfield_a = datafield.find("subfield", attrs={'code': 'a'})
+                    if subfield_a:
+                        identifiers.append({'idhal': subfield_a.text.strip()})
+                
+                # Le bloc de code mal indenté et redondant a été supprimé ici
             
         return identifiers
 
