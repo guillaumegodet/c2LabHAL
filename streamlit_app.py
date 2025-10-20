@@ -34,7 +34,7 @@ def add_sidebar_menu():
 
     st.sidebar.markdown("📄 [c2LabHAL version CSV](https://c2labhal-csv.streamlit.app/)")
     st.sidebar.markdown("🏛️ [c2LabHAL version Nantes Université](https://c2labhal-nantes.streamlit.app/)")
-    st.sidebar.markdown("🔗 [Alignez une liste de chercheurs avec IdRef et HAL](https://c2labhal-idref-hal-alignment.streamlit.app/)")
+    st.sidebar.markdown("🔗 [Alignez une liste de chercheurs avec IdRef et HAL](https://c2labhal-auteurs.streamlit.app/)")
 
     st.sidebar.markdown("---")
     
