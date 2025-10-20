@@ -244,6 +244,27 @@ class Pydref(object):
                         break
 
             if (datafield.attrs['tag'] == '035'):
+            
+            # 1. Vérification ORCID
+            is_ORCID = any(
+                subfield.text.strip().upper() == 'ORCID' 
+                for subfield in datafield.find_all("subfield", attrs={'code': '2'})
+            )
+            if is_ORCID:
+                subfield_a = datafield.find("subfield", attrs={'code': 'a'})
+                if subfield_a:
+                    identifiers.append({'orcid': subfield_a.text.strip()})
+            
+            # 2. Vérification HAL (IdHAL)
+            is_HAL = any(
+                subfield.text.strip().upper() == 'HAL' 
+                for subfield in datafield.find_all("subfield", attrs={'code': '2'})
+            )
+            if is_HAL:
+                subfield_a = datafield.find("subfield", attrs={'code': 'a'})
+                if subfield_a:
+                    identifiers.append({'idhal': subfield_a.text.strip()})
+            if (datafield.attrs['tag'] == '035'):
                 is_ORCID = False
                 for subfield in datafield.findAll("subfield"):
                     if subfield.text.strip().upper() == 'ORCID':
@@ -255,17 +276,7 @@ class Pydref(object):
                             identifiers.append({'orcid': subfield.text.strip()})
                             break
 
-            if (datafield.attrs['tag'] == '035'):
-                is_sudoc = False
-                for subfield in datafield.findAll("subfield"):
-                    if subfield.text.strip().upper() == 'SUDOC':
-                        is_sudoc = True
-                        break
-                if(is_sudoc):
-                    for subfield in datafield.findAll("subfield"):
-                        if subfield.attrs['code'] == 'a':
-                            identifiers.append({'sudoc': subfield.text.strip()})
-                            break
+            
         return identifiers
 
     def get_description_from_idref_notice(self: object, soup):
