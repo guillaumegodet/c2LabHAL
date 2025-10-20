@@ -221,70 +221,53 @@ class Pydref(object):
                         death = self.valid_idref_date(subfield.text.strip())
         return (birth, death)
 
-def get_identifiers_from_idref_notice(self: object, soup):
-    identifiers = []
+    def get_identifiers_from_idref_notice(self: object, soup):
+        identifiers = []
 
-    for controlfield in soup.find_all("controlfield"):
-        if (controlfield.attrs['tag'] == '001'):
-            identifiers.append({'idref': controlfield.text.strip()})
-            break
+        for controlfield in soup.find_all("controlfield"):
+            if (controlfield.attrs['tag'] == '001'):
+                identifiers.append({'idref': controlfield.text.strip()})
+                break
 
-    for datafield in soup.find_all("datafield"):
+        for datafield in soup.find_all("datafield"):
 
-        if (datafield.attrs['tag'] == '010'):
-            for subfield in datafield.findAll("subfield"):
-                if subfield.attrs['code'] == 'a':
-                    identifiers.append({'isni': subfield.text.strip()})
-                    break
-
-        if (datafield.attrs['tag'] == '033'):
-            
-            for subfield in datafield.findAll("subfield"):
-                if subfield.attrs['code'] == 'a':
-                    identifiers.append({'ark': subfield.text.strip()})
-                    break
-
-        if (datafield.attrs['tag'] == '035'):
-            
-            is_ORCID = False
-            for subfield in datafield.findAll("subfield"):
-                if subfield.text.strip().upper() == 'ORCID':
-                    is_ORCID = True
-                    break
-            if(is_ORCID):
+            if (datafield.attrs['tag'] == '010'):
                 for subfield in datafield.findAll("subfield"):
                     if subfield.attrs['code'] == 'a':
-                        identifiers.append({'orcid': subfield.text.strip()})
+                        identifiers.append({'isni': subfield.text.strip()})
                         break
-            
-            # --- VÉRIFICATION HAL (NOUVELLE SECTION) ---
-            is_HAL = False
-            for subfield in datafield.findAll("subfield"):
-                # On cherche subfield code="2" contenant "HAL"
-                if subfield.attrs.get('code') == '2' and subfield.text.strip().upper() == 'HAL': 
-                    is_HAL = True
-                    break
-            if(is_HAL):
-                for subfield in datafield.findAll("subfield"):
-                    # On cherche la valeur de l'identifiant (subfield code="a")
-                    if subfield.attrs['code'] == 'a':
-                        identifiers.append({'idhal': subfield.text.strip()})
-                        break
-                        
-            # --- VÉRIFICATION SUDOC (inchangée) ---
-            is_sudoc = False
-            for subfield in datafield.findAll("subfield"):
-                if subfield.text.strip().upper() == 'SUDOC':
-                    is_sudoc = True
-                    break
-            if(is_sudoc):
+
+            if (datafield.attrs['tag'] == '033'):
                 for subfield in datafield.findAll("subfield"):
                     if subfield.attrs['code'] == 'a':
-                        identifiers.append({'sudoc': subfield.text.strip()})
+                        identifiers.append({'ark': subfield.text.strip()})
                         break
-                        
-    return identifiers
-    
+
+            if (datafield.attrs['tag'] == '035'):
+                is_ORCID = False
+                for subfield in datafield.findAll("subfield"):
+                    if subfield.text.strip().upper() == 'ORCID':
+                        is_ORCID = True
+                        break
+                if(is_ORCID):
+                    for subfield in datafield.findAll("subfield"):
+                        if subfield.attrs['code'] == 'a':
+                            identifiers.append({'orcid': subfield.text.strip()})
+                            break
+
+            if (datafield.attrs['tag'] == '035'):
+                is_sudoc = False
+                for subfield in datafield.findAll("subfield"):
+                    if subfield.text.strip().upper() == 'SUDOC':
+                        is_sudoc = True
+                        break
+                if(is_sudoc):
+                    for subfield in datafield.findAll("subfield"):
+                        if subfield.attrs['code'] == 'a':
+                            identifiers.append({'sudoc': subfield.text.strip()})
+                            break
+        return identifiers
+
     def get_description_from_idref_notice(self: object, soup):
         descriptions = []
         for datafield in soup.find_all("datafield"):
