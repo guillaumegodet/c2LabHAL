@@ -527,8 +527,6 @@ mind = 2005
 threads = 8
 similarity_threshold = 90
 
-st.header("⚙️ Paramètres")
-
 col3, col4 = st.columns(2)
 cur = datetime.datetime.now().year
 ymin = col3.number_input("Année min HAL", 1900, cur, 2015)
