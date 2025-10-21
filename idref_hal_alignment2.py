@@ -9,8 +9,8 @@ import re
 from io import BytesIO
 from difflib import SequenceMatcher
 from pydref import Pydref
-from bs4 import BeautifulSoup # AJOUT CRITIQUE pour parser la notice IdRef XML
-from urllib.parse import urlencode # Utile pour certaines requêtes
+from bs4 import BeautifulSoup 
+from urllib.parse import urlencode 
 
 # ----- optional fuzzy match -----
 try:
@@ -483,12 +483,12 @@ def export_xlsx(fusion,idref_df=None,hal_df=None,params=None):
 st.title("🔗 Alignement Annuaire de chercheurs ↔ IdRef ↔ HAL")
 
 uploaded_file = st.file_uploader(
-    '📄 Fichier auteurs (facultatif), doit contenir au moins une colonne "Nom" et une colonne "Prénom"',
+    '📄 Fichier auteurs. Doit contenir au moins une colonne "Nom" et une colonne "Prénom"',
     type=["csv","xlsx"]
 )
 structure_ids = st.text_input(
-    "🏛️ Identifiants structures HAL",
-    help="Identifiant HAL de la structure dont vous voulez récupérer les auteurs (ex: 91134). "
+    "🏛️ Identifiants de structures HAL (par exemple : 1088607,95668)",
+    help="Identifiants HAL des structures dont vous voulez récupérer les auteurs. "
          "Utilisez AuréHAL pour le trouver. Séparez plusieurs identifiants par des virgules sans espace."
 )
 
