@@ -486,7 +486,7 @@ if uploaded_file is not None:
 
 minb = 1920
 mind = 2005
-threads = min(8, max(2, len(df)//5))
+threads = 8
 similarity_threshold = 90
 
 st.header("⚙️ Paramètres")
