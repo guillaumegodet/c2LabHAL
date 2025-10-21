@@ -396,6 +396,12 @@ def export_xlsx(fusion, idref_df=None, hal_df=None, params=None):
             clean_fusion.to_excel(w, sheet_name="Résultats", index=False)
 
         if idref_df is not None and hal_df is not None:
+            # Peupler les colonnes Nom et Prénom dans HAL avant concaténation
+            if "Nom" not in hal_df.columns:
+                hal_df["Nom"] = hal_df.get("lastName_s", None)
+            if "Prénom" not in hal_df.columns:
+                hal_df["Prénom"] = hal_df.get("firstName_s", None)
+        
             all_idref = pd.concat([idref_df, hal_df], ignore_index=True, sort=False)
             idref_cols = ["Nom", "Prénom", "idref_ppn_list", "idref_status", "nb_match", "match_info",
                           "alt_names", "idref_orcid", "idref_description", "idref_idhal"]
