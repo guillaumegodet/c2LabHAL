@@ -446,6 +446,38 @@ def export_xlsx(fusion, idref_df=None, hal_df=None, params=None):
     out.seek(0)
     return out
 
+def export_csv(fusion, idref_df=None, hal_df=None, params=None):
+    """Prépare un export CSV (mêmes données que l'onglet Résultats)."""
+    from io import StringIO
+
+    def clean_export(df):
+        df2 = df.copy()
+        for c in df2.columns:
+            if df2[c].dtype == object:
+                df2[c] = df2[c].astype(str).replace("nan", "").replace("None", "")
+        return df2
+
+    csv_buffers = {}
+    if fusion is not None:
+        clean_fusion = clean_export(fusion)
+        buffer = StringIO()
+        clean_fusion.to_csv(buffer, index=False, sep=";", encoding="utf-8")
+        csv_buffers["Résultats"] = buffer.getvalue()
+
+    if idref_df is not None:
+        clean_idref = clean_export(idref_df)
+        buffer = StringIO()
+        clean_idref.to_csv(buffer, index=False, sep=";", encoding="utf-8")
+        csv_buffers["Extraction_IdRef"] = buffer.getvalue()
+
+    if hal_df is not None:
+        clean_hal = clean_export(hal_df)
+        buffer = StringIO()
+        clean_hal.to_csv(buffer, index=False, sep=";", encoding="utf-8")
+        csv_buffers["Extraction_HAL"] = buffer.getvalue()
+
+    return csv_buffers
+
 
 st.title("🔗 Alignement Annuaire de chercheurs ↔ IdRef ↔ HAL")
 
@@ -574,6 +606,9 @@ if st.button("🚀 Lancer l’analyse"):
         params = {"structures": structure_ids, "year_min": ymin, "year_max": ymax}
         xlsx = export_xlsx(hal_df, hal_df=hal_df, params=params)
         st.download_button("⬇️ Télécharger XLSX", xlsx, file_name="hal_idref_structures.xlsx")
+        csv_files = export_csv(idref_df, idref_df=idref_df, params=params)
+        st.download_button("⬇️ Télécharger CSV (Résultats)", csv_files["Résultats"], file_name="idref_only_resultats.csv", mime="text/csv")
+
 
     elif file_provided and not hal_provided:
         st.header("🧾 Mode 1 : Fichier seul (recherche IdRef)")
@@ -584,7 +619,9 @@ if st.button("🚀 Lancer l’analyse"):
         params = {"mode": "Fichier seul"}
         xlsx = export_xlsx(idref_df, idref_df=idref_df, params=params)
         st.download_button("⬇️ Télécharger XLSX", xlsx, file_name="idref_only.xlsx")
-
+        csv_files = export_csv(idref_df, idref_df=idref_df, params=params)
+        st.download_button("⬇️ Télécharger CSV (Résultats)", csv_files["Résultats"], file_name="idref_only_resultats.csv", mime="text/csv")
+        
     elif file_provided and hal_provided:
         st.header("🧩 Mode 3 : Fichier + HAL (fusion complète)")
         st.info("📥 Extraction HAL + enrichissement IdRef...")
@@ -626,3 +663,5 @@ if st.button("🚀 Lancer l’analyse"):
 
         xlsx = export_xlsx(fusion, idref_df=idref_df, hal_df=hal_df, params=params)
         st.download_button("⬇️ Télécharger XLSX fusion", xlsx, file_name="fusion_idref_hal.xlsx")
+        csv_files = export_csv(idref_df, idref_df=idref_df, params=params)
+        st.download_button("⬇️ Télécharger CSV (Résultats)", csv_files["Résultats"], file_name="idref_only_resultats.csv", mime="text/csv")
