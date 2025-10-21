@@ -12,6 +12,7 @@ from pydref import Pydref
 from bs4 import BeautifulSoup 
 from urllib.parse import urlencode 
 
+
 # ----- optional fuzzy match -----
 try:
     from rapidfuzz import fuzz
@@ -72,7 +73,8 @@ def normalize_text(s):
 
 def similarity_score(a, b):
     if USE_RAPIDFUZZ:
-        return fuzz.QRatio(a or "", b or "")
+        # Utiliser un score plus strict pour un matching précis
+        return fuzz.WRatio(a or "", b or "") 
     return SequenceMatcher(None, a or "", b or "").ratio() * 100
 
 @st.cache_resource
@@ -150,8 +152,9 @@ def fetch_author_details_batch(ids, fields, batch_size=20):
     for i in range(0, total, batch_size):
         batch = ids[i:i+batch_size]
         # CORRECTION : Utilisation de docid au lieu de person_i pour interroger l'API
+        # On ajoute docid dans les champs retournés
         q = " OR ".join([f'docid:\"{x}\"' for x in batch]) 
-        params = {"q": q, "wt": "json", "fl": fields, "rows": batch_size}
+        params = {"q": q, "wt": "json", "fl": fields + ",docid", "rows": batch_size}
         try:
             r = requests.get(HAL_AUTHOR_API, params=params)
             r.raise_for_status()
@@ -198,11 +201,9 @@ def process_hal_row(row, min_birth, min_death):
                     parsed_any = True
                     # Assurez-vous que l'implémentation de Pydref supprime les namespaces XML
                     # Sinon, il faut faire xml.replace('xmlns="..."', '')
-                    soup = BeautifulSoup(xml, "lxml") 
+                    xml_clean = xml.replace('xmlns="http://www.loc.gov/MARC21/slim"', '')
+                    soup = BeautifulSoup(xml_clean, "xml") 
                     
-                    # CORRECTION CLÉ : Utiliser la fonction get_identifiers_from_idref_notice
-                    # Assurez-vous que cette fonction dans votre Pydref local est bien corrigée
-                    # pour lire les champs 035$2HAL et 035$2ORCID.
                     ids_details = pydref_api.get_identifiers_from_idref_notice(soup)
                     
                     # Extrait ORCID et IdHAL des identifiants détaillés
@@ -254,8 +255,8 @@ def process_hal_row(row, min_birth, min_death):
                 if isinstance(m.get("alt_names"), list): alts += m["alt_names"]
                 
                 # Extraction des identifiants disponibles (IdHAL/ORCID)
-                for ident in m.get("identifiers", []):
-                    if "orcid" in ident and not orcid: orcid = ident["orcid"]
+                # Ces champs sont ajoutés à la racine du dict par la fonction get_idref corrigée
+                if "orcid" in m and not orcid: orcid = m["orcid"]
                 if "idhal" in m and not idhal: idhal = m["idhal"]
                     
                 if not match_info:
@@ -275,9 +276,10 @@ def process_hal_row(row, min_birth, min_death):
     return result
 
 def enrich_hal_rows_with_idref_parallel(hal_df, min_birth, min_death, max_workers=8):
-    # ... (fonction inchangée - gère l'exécution parallèle)
     hal_df = hal_df.copy()
-    st.info(f"🔄 Enrichissement IdRef parallèle ({len(hal_df)} auteurs HAL)...")
+    # Ajout d'une colonne "auteur_hal_complet" pour l'onglet extraction
+    hal_df['auteur_hal_complet'] = hal_df['firstName_s'] + ' ' + hal_df['lastName_s']
+    st.info(f"🔄 Enrichissement IdRef ({len(hal_df)} auteurs HAL)...")
     total = len(hal_df)
     results = []
     prog = st.progress(0)
@@ -286,18 +288,21 @@ def enrich_hal_rows_with_idref_parallel(hal_df, min_birth, min_death, max_worker
         done=0
         for fut in concurrent.futures.as_completed(futures):
             i=futures[fut]
-            try:results.append((i,fut.result()))
+            try:
+                result_dict = fut.result()
+                # Fusionner le résultat avec les données HAL existantes
+                hal_row = hal_df.iloc[i].to_dict()
+                hal_row.update(result_dict)
+                results.append(hal_row)
             except Exception as e:
-                # Log the error in the result for debugging if needed, but for now just empty dict
-                results.append((i,{"error_log": str(e)})) 
+                # Gérer l'erreur si nécessaire
+                results.append(hal_df.iloc[i].to_dict()) 
             done+=1
             if done%5==0 or done==total:prog.progress(done/total)
     prog.empty()
-    for i,res in results:
-        for k,v in res.items():hal_df.at[i,k]=v
-    return hal_df
+    return pd.DataFrame(results)
 
-# ===== IDREF enrichment (FILE - Parallel) - FONCTIONS RÉTABLIES POUR LE MODE 1 RAPIDE =====
+# ===== IDREF enrichment (FILE - Parallel) =====
 
 def process_file_row(row, min_birth, min_death):
     """Effectue la recherche IdRef détaillée pour une seule ligne du fichier (utilisé en parallèle)."""
@@ -325,9 +330,10 @@ def process_file_row(row, min_birth, min_death):
         for m in matches:
             if isinstance(m.get("description"), list): desc += m["description"]
             if isinstance(m.get("alt_names"), list): alt += m["alt_names"]
-            for ident in m.get("identifiers", []):
-                if "orcid" in ident and not orcid: orcid = ident["orcid"]
-            if "idhal" in m and not idhal: idhal = m.get("idhal")
+            
+            # Extraction des identifiants de la racine
+            if "orcid" in m and not orcid: orcid = m["orcid"]
+            if "idhal" in m and not idhal: idhal = m["idhal"]
         
         info["idref_description"] = "; ".join(desc) if desc else None
         info["alt_names"] = "; ".join(sorted(set(alt))) if alt else None
@@ -362,73 +368,76 @@ def enrich_file_rows_with_idref_parallel(df, min_birth, min_death, max_workers=8
     st.success("Recherche IdRef terminée ✅")
     return pd.DataFrame(results)
 
-# ===== FUZZY MERGE (Simple version) =====
+# ===== FUZZY MERGE (Version corrigée et prioritaire) =====
 def fuzzy_merge_file_hal(df_file, df_hal, threshold=90):
     """
-    Fait une fusion floue des auteurs du fichier (enrichi IdRef) avec les auteurs HAL (enrichi IdRef).
-    (Version simplifiée de la fusion floue basée sur les noms)
+    Fusion floue des auteurs du fichier avec les auteurs HAL.
+    Priorise le statut PREFERRED et garantit un match unique (1:1).
     """
-    hal_keep = ["form_i","person_i","lastName_s","firstName_s","valid_s","idHal_s","halId_s","idrefId_s","orcidId_s","emailDomain_s",
-                "idref_ppn_list", "idref_status", "nb_match", "match_info", "alt_names", "idref_orcid", "idref_description", "idref_idhal"]
-    # Nettoyage des colonnes IdRef qui n'existent pas dans HAL (puisque le fichier les apporte)
-    hal_keep = [c for c in hal_keep if c in df_hal.columns] 
-    
+    # 1. Préparation et normalisation des données
     df_file = df_file.copy()
     df_hal = df_hal.copy()
     
-    # Préparation pour la fusion
+    # Colonnes HAL pertinentes, y compris le nouveau nom docid
+    HAL_CORE_COLS = ["docid","person_i","lastName_s","firstName_s","valid_s","idHal_s","halId_s","idrefId_s","orcidId_s","emailDomain_s"]
+    HAL_IDREF_COLS = ["idref_ppn_list", "idref_status", "nb_match", "match_info", "alt_names", "idref_orcid", "idref_description", "idref_idhal"]
+
+    # Création des colonnes normalisées pour la comparaison
     df_file["norm_full"] = (df_file["Prénom"].fillna("").apply(normalize_text)+" "+df_file["Nom"].fillna("").apply(normalize_text)).str.strip()
     df_hal["norm_full"] = (df_hal["firstName_s"].fillna("").apply(normalize_text)+" "+df_hal["lastName_s"].fillna("").apply(normalize_text)).str.strip()
     df_hal["__matched"] = False
     
-    # Colonnes spécifiques au fichier (hors Nom, Prénom, et colonnes IdRef standard)
-    file_cols_keep = [c for c in df_file.columns if c not in ["Nom", "Prénom", "norm_full", "idref_ppn_list", "idref_status", "nb_match", "match_info", "alt_names", "idref_orcid", "idref_description", "idref_idhal"]]
-    
-    # Colonnes HAL avec préfixe (exclut les colonnes d'enrichissement IdRef qui sont prioritaires)
-    hal_pref = [f"HAL_{c}" for c in hal_keep if c not in ["idref_ppn_list","idref_status","nb_match","match_info","alt_names","idref_orcid","idref_description","idref_idhal"]]
+    # Priorisation des formes HAL: PREFERRED (2) > INCOMING (1)
+    df_hal['__priority'] = df_hal['valid_s'].map({'PREFERRED': 2, 'INCOMING': 1}).fillna(0)
+    df_hal = df_hal.sort_values(by=['__priority', 'norm_full'], ascending=[False, True]).reset_index(drop=True)
     
     merged = []
-
-    st.info("🔄 Tentative de fusion floue (Fichier → HAL)...")
+    st.info("🔄 Tentative de fusion floue 1:1 (Fichier → HAL, Priorité PREFERRED)...")
     prog = st.progress(0, text="Fusion...")
     total_file = len(df_file)
+    
     for i, fr in df_file.iterrows():
-        row = {"Nom": fr.get("Nom"), "Prénom": fr.get("Prénom")}
-        for c in file_cols_keep: row[c] = fr.get(c)
-
-        # Ajout des colonnes d'enrichissement IdRef du fichier
-        idref_cols = ["idref_ppn_list","idref_status","nb_match","match_info","alt_names","idref_orcid","idref_description","idref_idhal"]
-        for c in idref_cols: row[c] = fr.get(c)
-
-        for c_hal_pref in hal_pref: row[c_hal_pref] = None
-
+        row = fr.to_dict()
         row["source"] = "Fichier"
         row["match_score"] = None
         
-        best_score, best_idx = -1, None
+        best_score = -1
+        best_match_hal = None
         f_norm = fr.get("norm_full","")
 
         if f_norm:
+            # Recherche du meilleur match unique
             for i_hal, hr in df_hal[df_hal["__matched"] == False].iterrows():
                 score = similarity_score(f_norm, hr.get("norm_full",""))
-                if score > best_score:
-                    best_score, best_idx = score, i_hal
-        
-        if best_idx is not None and best_score >= threshold:
-            h = df_hal.loc[best_idx]
+                
+                # Critère de sélection : Meilleur score et supérieur au seuil
+                if score >= threshold and score > best_score:
+                    best_score = score
+                    best_match_hal = hr
+
+        # Si un match valide et unique est trouvé
+        if best_match_hal is not None:
+            h = best_match_hal
             
-            # Ajout des données HAL
-            for c in hal_keep:
-                if c in idref_cols:
-                    # Remplacer les infos IdRef du fichier par celles de HAL si HAL a une correspondance PPN non nulle
-                    if h.get("idref_ppn_list") is not None:
-                        row[c] = h.get(c)
-                else:
-                    row[f"HAL_{c}"] = h.get(c)
+            # Marquer la ligne HAL comme utilisée (pour garantir 1:1)
+            df_hal.loc[h.name, "__matched"] = True
             
+            # Remplacement/Ajout des données HAL
+            for col in HAL_CORE_COLS:
+                row[f"HAL_{col}"] = h.get(col)
+            
+            # Remplacement des infos IdRef du fichier par celles de HAL si HAL les a trouvées
+            hal_ppn_found = pd.notna(h.get("idref_ppn_list"))
+            for col in HAL_IDREF_COLS:
+                if hal_ppn_found and pd.notna(h.get(col)):
+                     row[col] = h.get(col)
+                # Sinon, on garde la valeur IdRef du fichier (déjà dans 'row')
+
             row["source"] = "Fichier + HAL"
             row["match_score"] = best_score
-            df_hal.at[best_idx, "__matched"] = True
+        
+        # Supprimer les colonnes temporaires
+        row.pop("norm_full", None)
         
         merged.append(row)
         prog.progress(min((i+1)/total_file, 1.0))
@@ -437,30 +446,45 @@ def fuzzy_merge_file_hal(df_file, df_hal, threshold=90):
 
     # 2. Ajout des lignes HAL-only restantes
     st.info("➕ Ajout des auteurs HAL non-appariés...")
+    
+    # Colonnes spécifiques au fichier (hors Nom, Prénom, norm_full et les colonnes IdRef standard)
+    file_specific_cols = [c for c in df_file.columns if c not in ["Nom", "Prénom", "norm_full"] + HAL_IDREF_COLS]
+    
+    # Colonnes HAL avec préfixe HAL_
+    hal_pref_cols = [f"HAL_{c}" for c in HAL_CORE_COLS]
+    
     for _, h in df_hal[df_hal["__matched"] == False].iterrows():
-        row = {c: None for c in file_cols_keep + hal_pref + ["source","match_score", "Nom", "Prénom"]}
+        # Ligne de base (initialisée à None pour les colonnes Fichier)
+        row = {c: None for c in file_specific_cols + hal_pref_cols + ["Nom", "Prénom", "match_score", "source"]}
+
+        # Ajout des données de base
         row["Nom"] = h.get("lastName_s") or ""
         row["Prénom"] = h.get("firstName_s") or ""
-
-        for c in hal_keep:
-            if c in idref_cols:
-                row[c] = h.get(c)
-            else:
-                row[f"HAL_{c}"] = h.get(c)
-
         row["source"] = "HAL"
-        row["match_score"] = None
+        
+        # Ajout des données IdRef enrichies par HAL
+        for col in HAL_IDREF_COLS:
+             row[col] = h.get(col)
+
+        # Ajout des données HAL
+        for col in HAL_CORE_COLS:
+            row[f"HAL_{col}"] = h.get(col)
+
         merged.append(row)
 
-    # 3. Finalisation des colonnes
+    # 3. Finalisation des colonnes pour l'onglet "Résultats"
+    # COLONNES DEMANDÉES PAR L'UTILISATEUR
     CORE_REQUESTED_COLUMNS_ORDER = [
-        "Nom", "Prénom", "idref_ppn_list", "HAL_idHal_s", "idref_idhal",
-        "idref_orcid", "HAL_orcidId_s", "HAL_valid_s", "HAL_form_i", 
-        "HAL_person_i", "HAL_idrefId_s", "HAL_emailDomain_s", "source", "nb_match", "match_info", "alt_names", "idref_description",
+        "Nom", "Prénom", "idref_ppn_list", "HAL_idrefId_s", "HAL_idHal_s", 
+        "idref_idhal", "idref_orcid", "HAL_orcidId_s", "HAL_valid_s", 
+        "HAL_docid", "HAL_emailDomain_s", "idref_description", "source"
     ]
-    file_specific_cols = [c for c in df_file.columns if c not in ["Nom", "Prénom", "norm_full", "idref_ppn_list", "idref_status", "nb_match", "match_info", "alt_names", "idref_orcid", "idref_description", "idref_idhal"]]
-    final_cols_order = ["Nom", "Prénom"] + file_specific_cols + [c for c in CORE_REQUESTED_COLUMNS_ORDER if c not in ["Nom", "Prénom"]] + ["match_score"]
+    
     df_final = pd.DataFrame(merged)
+    # Ajouter les colonnes spécifiques au fichier à l'ordre
+    file_specific_cols_in_df = [c for c in file_specific_cols if c in df_final.columns]
+    final_cols_order = ["Nom", "Prénom"] + file_specific_cols_in_df + [c for c in CORE_REQUESTED_COLUMNS_ORDER if c not in ["Nom", "Prénom"]] + ["match_score"]
+
     final_cols_to_keep = [c for c in final_cols_order if c in df_final.columns]
     df_final = df_final.loc[:, final_cols_to_keep]
     df_final = df_final.loc[:, ~df_final.columns.duplicated()]
@@ -468,16 +492,72 @@ def fuzzy_merge_file_hal(df_file, df_hal, threshold=90):
     return df_final.sort_values(by=["Nom", "Prénom"])
 
 
-# ===== EXPORT =====
-def export_xlsx(fusion,idref_df=None,hal_df=None,params=None):
-    out=BytesIO()
+# ===== EXPORT (Mise à jour des onglets et colonnes) =====
+def export_xlsx(fusion, idref_df=None, hal_df=None, idref_hal_df_for_extraction=None, params=None):
+    out = BytesIO()
     engine_to_use = EXCEL_ENGINE or "openpyxl"
-    with pd.ExcelWriter(out,engine=engine_to_use) as w:
-        fusion.to_excel(w,sheet_name="Résultats",index=False)
-        if idref_df is not None:idref_df.to_excel(w,sheet_name="extraction IdRef",index=False)
-        if hal_df is not None:hal_df.to_excel(w,sheet_name="extraction HAL",index=False)
-        if params is not None:pd.DataFrame([params]).to_excel(w,sheet_name="Paramètres",index=False)
-    out.seek(0);return out
+    
+        
+    # 1. Onglet Résultats (fusion)
+    FUSION_COLS = [
+        "Nom", "Prénom", "idref_ppn_list", "HAL_idrefId_s", "HAL_idHal_s", "idref_idhal", 
+        "idref_orcid", "HAL_orcidId_s", "HAL_valid_s", "HAL_docid", "HAL_emailDomain_s", 
+        "idref_description", "source", "match_score"
+    ]
+    
+    # On ajoute les colonnes spécifiques au fichier (Nom/Prénom non inclus)
+    file_specific_cols = [c for c in fusion.columns if c not in [
+        "Nom", "Prénom", "match_score"] + FUSION_COLS]
+    FUSION_COLS_FINAL = [c for c in ["Nom", "Prénom"] + file_specific_cols + FUSION_COLS if c in fusion.columns and c not in ["Nom", "Prénom"]]
+    FUSION_COLS_FINAL = ["Nom", "Prénom"] + [c for c in FUSION_COLS_FINAL if c not in ["Nom", "Prénom"]]
+    
+    # 2. Onglet Extraction IdRef (Fichier + HAL enrichis)
+    IDREF_EXTRACTION_COLS = [
+        "Nom", "Prénom", "idref_ppn_list", "idref_status", "nb_match", "match_info", 
+        "alt_names", "idref_orcid", "idref_description", "idref_idhal"
+    ]
+    
+    # 3. Onglet Extraction HAL
+    HAL_EXTRACTION_COLS = [
+        "firstName_s", "lastName_s", "valid_s", "docid", "idHal_s", "orcidId_s", 
+        "idrefId_s", "emailDomain_s", "idref_ppn_list", "idref_idhal", "idref_orcid" # on ajoute les champs enrichis pour le contexte
+    ]
+
+    with pd.ExcelWriter(out, engine=engine_to_use) as w:
+        
+        # Onglet Résultats
+        fusion_to_export = fusion.loc[:, [c for c in FUSION_COLS_FINAL if c in fusion.columns]]
+        fusion_to_export.to_excel(w, sheet_name="Résultats", index=False)
+        
+        # Onglet Extraction IdRef (toutes les entrées Fichier + HAL)
+        if idref_hal_df_for_extraction is not None:
+            # On conserve que les colonnes pertinentes à l'extraction IdRef
+            idref_extraction_to_export = idref_hal_df_for_extraction.loc[:, [c for c in IDREF_EXTRACTION_COLS if c in idref_hal_df_for_extraction.columns]]
+            idref_extraction_to_export = idref_extraction_to_export.rename(columns={"nb_match": "idref_nb_match"})
+            idref_extraction_to_export.to_excel(w, sheet_name="Extraction IdRef", index=False)
+            
+        # Onglet Extraction HAL
+        if hal_df is not None:
+            hal_extraction_to_export = hal_df.loc[:, [c for c in HAL_EXTRACTION_COLS if c in hal_df.columns]]
+            # Renommage des colonnes HAL selon la demande
+            rename_map = {
+                "firstName_s": "HAL_firstName_s",
+                "lastName_s": "HAL_lastName_s",
+                "valid_s": "HAL_valid_s",
+                "docid": "HAL_docid",
+                "idHal_s": "HAL_idHal_s",
+                "orcidId_s": "HAL_orcidId_s",
+                "idrefId_s": "HAL_idrefId_s",
+                "emailDomain_s": "HAL_emailDomain_s"
+            }
+            hal_extraction_to_export = hal_extraction_to_export.rename(columns=rename_map)
+            hal_extraction_to_export.to_excel(w, sheet_name="Extraction HAL", index=False)
+            
+        if params is not None:
+            pd.DataFrame([params]).to_excel(w, sheet_name="Paramètres", index=False)
+            
+    out.seek(0)
+    return out
 
 # ===== INTERFACE =====
 st.title("🔗 Alignement Annuaire de chercheurs ↔ IdRef ↔ HAL")
@@ -616,47 +696,49 @@ if st.button("🚀 Lancer l’analyse"):
         xlsx = export_xlsx(idref_df, idref_df=idref_df, params=params)
         st.download_button("⬇️ Télécharger XLSX",xlsx,file_name="idref_only.xlsx")
 
-    # MODE 3 — FUSION
+     # MODE 3 — FUSION
     elif file_provided and hal_provided:
         st.header("🧩 Mode 3 : Fichier + HAL (fusion complète)")
         
         # 1. HAL extraction and enrichment
-        st.info("📥 Extraction HAL + enrichissement IdRef...")
-        pubs = fetch_publications_for_structures(structure_ids,ymin,ymax)
-        ids = extract_author_ids(pubs, struct_ids=structure_ids)
-        hal_auths = fetch_author_details_batch(ids,
-            "docid,form_i,person_i,lastName_s,firstName_s,valid_s,idHal_s,halId_s,idrefId_s,orcidId_s,emailDomain_s")
-        hal_df = pd.DataFrame(hal_auths)
-        
-        if "idrefId_s" in hal_df.columns: hal_df["idrefId_s"] = hal_df["idrefId_s"].apply(clean_idref)
-        if "orcidId_s" in hal_df.columns: hal_df["orcidId_s"] = hal_df["orcidId_s"].apply(clean_orcid)
-        
-        # --- FILTRAGE PAR STATUT (INCOMING/PREFERRED) ---
-        initial_count = len(hal_df)
-        if "valid_s" in hal_df.columns:
-            hal_df = hal_df[hal_df["valid_s"].isin(["INCOMING", "PREFERRED"])]
-            st.info(f"Filtre HAL appliqué : **{len(hal_df)}** formes-auteurs (sur {initial_count} initialement) avec statut **INCOMING** ou **PREFERRED**.")
-        
-        if "lastName_s" not in hal_df.columns: hal_df["lastName_s"] = None
-        if "firstName_s" not in hal_df.columns: hal_df["firstName_s"] = None
-        
+        # ... (code inchangé) ...
         hal_df = enrich_hal_rows_with_idref_parallel(hal_df,minb,mind,threads)
 
-        # 2. File extraction and enrichment (ACCÉLÉRATION PAR PARALLÉLISME)
+        # 2. File extraction and enrichment
         df_in = df_preview.copy()
         df_in = df_in.rename(columns={col_nom_choice:"Nom", col_pre_choice:"Prénom"})
-        
         idref_df = enrich_file_rows_with_idref_parallel(df_in, minb, mind, threads)
         
-        # 3. Fuzzy Merge
+        # 3. Préparation du DataFrame pour l'onglet "Extraction IdRef"
+        # On renomme les colonnes HAL pour matcher les colonnes Fichier (Nom/Prénom/IdRef)
+        hal_for_idref_extraction = hal_df.rename(columns={
+            "lastName_s": "Nom", "firstName_s": "Prénom", "nb_match": "idref_nb_match"
+        })
+        # Sélection des colonnes IdRef/Nom/Prénom pour les auteurs HAL
+        hal_for_idref_extraction = hal_for_idref_extraction[[
+             "Nom", "Prénom", "idref_ppn_list", "idref_status", "nb_match", "match_info",
+             "alt_names", "idref_orcid", "idref_description", "idref_idhal"
+        ]]
+        
+        # Renommer la colonne Nom/Prénom dans idref_df pour l'union
+        idref_df_renamed = idref_df.rename(columns={"nb_match": "idref_nb_match"})
+
+        # Union des deux DataFrames pour l'onglet d'extraction
+        idref_hal_df_for_extraction = pd.concat([idref_df_renamed, hal_for_idref_extraction], ignore_index=True)
+        # Nettoyage des doublons/NaN si nécessaire, mais on les garde tous pour l'extraction
+
+        # 4. Fuzzy Merge (Logique 1:1 et PREFERRED)
         st.info("⚙️ Fusion floue...")
         fusion = fuzzy_merge_file_hal(idref_df, hal_df, threshold=similarity_threshold)
         st.dataframe(fusion.head(20))
         st.success("✅ Fusion terminée")
 
-        # 4. Export
+        # 5. Export
         params = {"structures": structure_ids, "year_min": ymin, "year_max": ymax,
                   "similarity_threshold": similarity_threshold, "threads": threads,
                   "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-        xlsx = export_xlsx(fusion,idref_df=idref_df,hal_df=hal_df,params=params) 
+        # On passe le DataFrame fusionné pour l'onglet "Résultats" et le DataFrame combiné pour l'onglet "Extraction IdRef"
+        xlsx = export_xlsx(fusion, idref_df=None, hal_df=hal_df, idref_hal_df_for_extraction=idref_hal_df_for_extraction, params=params) 
         st.download_button("⬇️ Télécharger XLSX fusion",xlsx,file_name="fusion_idref_hal.xlsx")
+
+
