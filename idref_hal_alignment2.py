@@ -607,7 +607,7 @@ if st.button("🚀 Lancer l’analyse"):
         xlsx = export_xlsx(hal_df, hal_df=hal_df, params=params)
         st.download_button("⬇️ Télécharger XLSX", xlsx, file_name="hal_idref_structures.xlsx")
         csv_files = export_csv(hal_df, hal_df=hal_df, params=params)
-        st.download_button("⬇️ Télécharger CSV (Résultats)", 
+        st.download_button("⬇️ Télécharger CSV", 
                    csv_files["Résultats"], 
                    file_name="hal_idref_structures.csv", 
                    mime="text/csv")
@@ -622,7 +622,7 @@ if st.button("🚀 Lancer l’analyse"):
         xlsx = export_xlsx(idref_df, idref_df=idref_df, params=params)
         st.download_button("⬇️ Télécharger XLSX", xlsx, file_name="idref_only.xlsx")
         csv_files = export_csv(idref_df, idref_df=idref_df, params=params)
-        st.download_button("⬇️ Télécharger CSV (Résultats)", 
+        st.download_button("⬇️ Télécharger CSV", 
                            csv_files["Résultats"], 
                            file_name="idref_only_resultats.csv", 
                            mime="text/csv")
@@ -668,8 +668,8 @@ if st.button("🚀 Lancer l’analyse"):
                   "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
         xlsx = export_xlsx(fusion, idref_df=idref_df, hal_df=hal_df, params=params)
-        st.download_button("⬇️ Télécharger XLSX fusion", xlsx, file_name="fusion_idref_hal.xlsx")
+        st.download_button("⬇️ Télécharger XLSX", xlsx, file_name="fusion_idref_hal.xlsx")
         csv_files = export_csv(fusion, idref_df=idref_df, hal_df=hal_df, params=params)
-        st.download_button("⬇️ Télécharger CSV (Résultats)", csv_files["Résultats"], file_name="fusion_idref_hal.csv", mime="text/csv")
+        st.download_button("⬇️ Télécharger CSV", csv_files["Résultats"], file_name="fusion_idref_hal.csv", mime="text/csv")
     
 
