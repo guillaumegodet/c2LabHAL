@@ -606,9 +606,11 @@ if st.button("🚀 Lancer l’analyse"):
         params = {"structures": structure_ids, "year_min": ymin, "year_max": ymax}
         xlsx = export_xlsx(hal_df, hal_df=hal_df, params=params)
         st.download_button("⬇️ Télécharger XLSX", xlsx, file_name="hal_idref_structures.xlsx")
-        csv_files = export_csv(idref_df, idref_df=idref_df, params=params)
-        st.download_button("⬇️ Télécharger CSV (Résultats)", csv_files["Résultats"], file_name="idref_only_resultats.csv", mime="text/csv")
-
+        csv_files = export_csv(hal_df, hal_df=hal_df, params=params)
+        st.download_button("⬇️ Télécharger CSV (Résultats)", 
+                   csv_files["Résultats"], 
+                   file_name="hal_idref_structures.csv", 
+                   mime="text/csv")
 
     elif file_provided and not hal_provided:
         st.header("🧾 Mode 1 : Fichier seul (recherche IdRef)")
@@ -620,7 +622,11 @@ if st.button("🚀 Lancer l’analyse"):
         xlsx = export_xlsx(idref_df, idref_df=idref_df, params=params)
         st.download_button("⬇️ Télécharger XLSX", xlsx, file_name="idref_only.xlsx")
         csv_files = export_csv(idref_df, idref_df=idref_df, params=params)
-        st.download_button("⬇️ Télécharger CSV (Résultats)", csv_files["Résultats"], file_name="idref_only_resultats.csv", mime="text/csv")
+        st.download_button("⬇️ Télécharger CSV (Résultats)", 
+                           csv_files["Résultats"], 
+                           file_name="idref_only_resultats.csv", 
+                           mime="text/csv")
+       
         
     elif file_provided and hal_provided:
         st.header("🧩 Mode 3 : Fichier + HAL (fusion complète)")
@@ -663,5 +669,7 @@ if st.button("🚀 Lancer l’analyse"):
 
         xlsx = export_xlsx(fusion, idref_df=idref_df, hal_df=hal_df, params=params)
         st.download_button("⬇️ Télécharger XLSX fusion", xlsx, file_name="fusion_idref_hal.xlsx")
-        csv_files = export_csv(idref_df, idref_df=idref_df, params=params)
-        st.download_button("⬇️ Télécharger CSV (Résultats)", csv_files["Résultats"], file_name="idref_only_resultats.csv", mime="text/csv")
+        csv_files = export_csv(fusion, idref_df=idref_df, hal_df=hal_df, params=params)
+        st.download_button("⬇️ Télécharger CSV (Résultats)", csv_files["Résultats"], file_name="fusion_idref_hal.csv", mime="text/csv")
+    
+
