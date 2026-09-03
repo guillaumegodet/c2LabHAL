@@ -1,4 +1,3 @@
-import os # Pour la variable d'environnement NCBI_API_KEY
 import streamlit as st
 import pandas as pd
 import io
@@ -69,7 +68,6 @@ def main():
     pubmed_query_labo_nantes = labo_selectionne_details_nantes.get('pubmed_query', '')
 
     scopus_api_key_secret_nantes = st.secrets.get("SCOPUS_API_KEY")
-    pubmed_api_key_secret_nantes = st.secrets.get("PUBMED_API_KEY")
 
     col1_dates_nantes, col2_dates_nantes = st.columns(2)
     with col1_dates_nantes:
@@ -95,8 +93,6 @@ def main():
     progress_text_area_nantes = st.empty() # Correction: Suffixe _nantes ajouté
 
     if st.button(f"🚀 Lancer la recherche pour {collection_a_chercher_nantes}"):
-        if pubmed_api_key_secret_nantes and pubmed_query_labo_nantes:
-            os.environ['NCBI_API_KEY'] = pubmed_api_key_secret_nantes
 
         scopus_df_nantes = pd.DataFrame()
         openalex_df_nantes = pd.DataFrame()

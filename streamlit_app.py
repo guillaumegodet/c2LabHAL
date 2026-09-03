@@ -1,4 +1,3 @@
-import os
 import streamlit as st
 import pandas as pd
 import io
@@ -90,11 +89,7 @@ def main():
 
     if st.button("🚀 Lancer la recherche et la comparaison"):
         scopus_api_key_secret = st.secrets.get("SCOPUS_API_KEY")
-        pubmed_api_key_secret = st.secrets.get("PUBMED_API_KEY")
-        
-        if pubmed_api_key_secret and pubmed_query_input:
-            os.environ['NCBI_API_KEY'] = pubmed_api_key_secret # PubMedFetcher utilise cette variable d'environnement
-        
+
         if not openalex_institution_id and not pubmed_query_input and not scopus_lab_id:
             st.error("Veuillez configurer au moins une source de données (OpenAlex, PubMed ou Scopus).")
             st.stop()

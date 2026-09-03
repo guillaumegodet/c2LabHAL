@@ -1,4 +1,19 @@
+import os
 import streamlit as st
+
+# metapub lit la variable d'environnement NCBI_API_KEY une seule fois, au moment de son
+# import (elle est ensuite mise en cache et ne peut plus être modifiée à l'exécution).
+# Il faut donc positionner cette variable AVANT le "from metapub import PubMedFetcher"
+# ci-dessous, sinon la clé API configurée dans les secrets Streamlit n'est jamais prise
+# en compte et les requêtes PubMed partent sans clé (limite de débit plus stricte côté
+# NCBI, provoquant des erreurs "Invalid ID ... rejected by Eutils" sur des PMID valides).
+try:
+    _pubmed_api_key = st.secrets.get("PUBMED_API_KEY")
+except Exception:
+    _pubmed_api_key = None
+if _pubmed_api_key and not os.environ.get('NCBI_API_KEY'):
+    os.environ['NCBI_API_KEY'] = _pubmed_api_key
+
 import pandas as pd
 import requests
 import json
