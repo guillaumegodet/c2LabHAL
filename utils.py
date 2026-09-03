@@ -160,34 +160,47 @@ def get_openalex_data(query, max_items=10000):
 
 def get_pubmed_data(query, max_items=10000):
     fetch = PubMedFetcher()
-    data = []
     try:
         pmids = fetch.pmids_for_query(query, retmax=max_items)
-        
-        for pmid in tqdm(pmids, desc="Récupération des articles PubMed"):
-            try:
-                article = fetch.article_by_pmid(pmid)
-                pub_date_obj = article.history.get('pubmed') if article.history else None
-                pub_date_str = pub_date_obj.date().isoformat() if pub_date_obj and hasattr(pub_date_obj, 'date') else 'N/A'
-                
-                data.append({
-                    'Data source': 'pubmed',
-                    'Title': article.title if article.title else "N/A",
-                    'doi': article.doi if article.doi else None,
-                    'id': pmid, 
-                    'Source title': article.journal if article.journal else "N/A", 
-                    'Date': pub_date_str
-                })
-            except Exception as e_article:
-                st.warning(f"Erreur lors de la récupération des détails pour l'article PubMed (PMID: {pmid}): {e_article}")
-                data.append({
-                    'Data source': 'pubmed', 'Title': "Erreur de récupération", 'doi': None,
-                    'id': pmid, 'Source title': "N/A", 'Date': "N/A"
-                })
-        return data
     except Exception as e_query:
         st.error(f"Erreur lors de la requête PMIDs à PubMed: {e_query}")
-        return [] 
+        return []
+
+    if not pmids:
+        return []
+
+    def _fetch_one_article(pmid):
+        try:
+            article = fetch.article_by_pmid(pmid)
+            pub_date_obj = article.history.get('pubmed') if article.history else None
+            pub_date_str = pub_date_obj.date().isoformat() if pub_date_obj and hasattr(pub_date_obj, 'date') else 'N/A'
+            return {
+                'Data source': 'pubmed',
+                'Title': article.title if article.title else "N/A",
+                'doi': article.doi if article.doi else None,
+                'id': pmid,
+                'Source title': article.journal if article.journal else "N/A",
+                'Date': pub_date_str
+            }, None
+        except Exception as e_article:
+            return {
+                'Data source': 'pubmed', 'Title': "Erreur de récupération", 'doi': None,
+                'id': pmid, 'Source title': "N/A", 'Date': "N/A"
+            }, (pmid, e_article)
+
+    # NCBI limite le débit à 3 req/s sans clé API, 10 req/s avec une clé (NCBI_API_KEY) :
+    # on adapte le nombre de threads en conséquence pour paralléliser sans se faire limiter.
+    max_workers = 8 if os.environ.get('NCBI_API_KEY') else 3
+
+    data = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for record, error in tqdm(executor.map(_fetch_one_article, pmids), total=len(pmids), desc="Récupération des articles PubMed"):
+            data.append(record)
+            if error:
+                pmid_err, e_article = error
+                st.warning(f"Erreur lors de la récupération des détails pour l'article PubMed (PMID: {pmid_err}): {e_article}")
+
+    return data
 
 def convert_to_dataframe(data, source_name):
     if not data: 
@@ -234,39 +247,75 @@ def compare_inex(norm_title1, norm_title2, threshold_strict=0.9, threshold_short
     return bool(matches)
 
 
-def ex_in_coll(original_title_to_check, collection_df):
-    if 'Titres' not in collection_df.columns or collection_df.empty:
-        return False 
-    
-    match_df = collection_df[collection_df['Titres'] == original_title_to_check]
-    if not match_df.empty:
-        row = match_df.iloc[0]
+def _build_hal_lookup(collection_df):
+    """
+    Pré-calcule, en un seul passage sur la collection HAL, les structures de recherche
+    (dict DOI->notice, dict titre exact->notice, liste des titres normalisés) utilisées
+    par statut_doi/statut_titre. Sans ça, ces fonctions reconstruisaient un set/une
+    recherche O(n) sur toute la collection à CHAQUE ligne comparée, ce qui dominait le
+    temps d'exécution de check_df sur de grosses collections.
+    """
+    lookup = {'doi_index': {}, 'title_index': {}, 'norm_title_list': []}
+    if collection_df is None or collection_df.empty:
+        return lookup
+
+    has_doi_col = 'DOIs' in collection_df.columns
+    has_title_col = 'Titres' in collection_df.columns
+    has_nti_col = 'nti' in collection_df.columns
+
+    for record in collection_df.to_dict('records'):
+        row_info = {
+            'Titres': record.get('Titres', ''),
+            'Hal_ids': record.get('Hal_ids', ''),
+            'Types de dépôts': record.get('Types de dépôts', ''),
+            'HAL Link': record.get('HAL Link', ''),
+            'HAL Ext ID': record.get('HAL Ext ID', ''),
+            'HAL_URI': record.get('HAL_URI', ''),
+        }
+
+        if has_doi_col:
+            doi_val = record.get('DOIs')
+            if isinstance(doi_val, str):
+                doi_key = doi_val.lower().strip()
+                if doi_key and doi_key not in lookup['doi_index']:
+                    lookup['doi_index'][doi_key] = row_info
+
+        if has_title_col:
+            title_val = record.get('Titres')
+            if isinstance(title_val, str) and title_val not in lookup['title_index']:
+                lookup['title_index'][title_val] = row_info
+
+        if has_nti_col:
+            lookup['norm_title_list'].append((record.get('nti', ''), row_info))
+
+    return lookup
+
+
+def ex_in_coll(original_title_to_check, hal_lookup):
+    row = hal_lookup['title_index'].get(original_title_to_check)
+    if row:
         return [
             "Titre trouvé dans la collection : probablement déjà présent",
-            original_title_to_check, 
+            original_title_to_check,
             row.get('Hal_ids', ''),
             row.get('Types de dépôts', ''),
-            row.get('HAL Link', ''), 
+            row.get('HAL Link', ''),
             row.get('HAL Ext ID', ''),
-            row.get('HAL_URI', '') 
+            row.get('HAL_URI', '')
         ]
     return False
 
-def inex_in_coll(normalised_title_to_check, original_title, collection_df):
-    if 'nti' not in collection_df.columns or collection_df.empty:
-        return False
-        
-    for idx, hal_title_norm_from_coll in enumerate(collection_df['nti']):
-        if compare_inex(normalised_title_to_check, hal_title_norm_from_coll): 
-            row = collection_df.iloc[idx]
+def inex_in_coll(normalised_title_to_check, original_title, hal_lookup):
+    for hal_title_norm_from_coll, row in hal_lookup['norm_title_list']:
+        if compare_inex(normalised_title_to_check, hal_title_norm_from_coll):
             return [
                 "Titre approchant trouvé dans la collection : à vérifier",
-                row.get('Titres', ''), 
+                row.get('Titres', ''),
                 row.get('Hal_ids', ''),
                 row.get('Types de dépôts', ''),
-                row.get('HAL Link', ''), 
+                row.get('HAL Link', ''),
                 row.get('HAL Ext ID', ''),
-                row.get('HAL_URI', '') 
+                row.get('HAL_URI', '')
             ]
     return False
 
@@ -320,57 +369,55 @@ def in_hal(title_solr_escaped_exact, original_title_to_check):
     return default_return
 
 
-def statut_titre(title_to_check, collection_df):
+def statut_titre(title_to_check, hal_lookup):
     default_return_statut = ["Titre invalide", "", "", "", "", "", ""]
     if not isinstance(title_to_check, str) or not title_to_check.strip():
         return default_return_statut
 
-    original_title = title_to_check 
+    original_title = title_to_check
     processed_title_for_norm = original_title
     try:
         if original_title.endswith("]") and '[' in original_title:
-            match_bracket = re.match(r"(.*)\[", original_title) 
+            match_bracket = re.match(r"(.*)\[", original_title)
             if match_bracket:
                 part_before_bracket = match_bracket.group(1).strip()
-                if part_before_bracket : 
+                if part_before_bracket :
                     processed_title_for_norm = part_before_bracket
-    except Exception: 
-        processed_title_for_norm = original_title 
+    except Exception:
+        processed_title_for_norm = original_title
 
-    title_normalised = normalise(processed_title_for_norm) 
+    title_normalised = normalise(processed_title_for_norm)
 
-    res_ex_coll = ex_in_coll(original_title, collection_df)
-    if res_ex_coll: 
+    res_ex_coll = ex_in_coll(original_title, hal_lookup)
+    if res_ex_coll:
         return res_ex_coll
 
-    res_inex_coll = inex_in_coll(title_normalised, original_title, collection_df)
-    if res_inex_coll: 
+    res_inex_coll = inex_in_coll(title_normalised, original_title, hal_lookup)
+    if res_inex_coll:
         return res_inex_coll
         
     res_hal_global = in_hal(escapeSolrArg(original_title), original_title) 
     return res_hal_global
 
 
-def statut_doi(doi_to_check, collection_df):
+def statut_doi(doi_to_check, hal_lookup):
     default_return_doi = ["Pas de DOI valide", "", "", "", "", "", ""]
     if pd.isna(doi_to_check) or not str(doi_to_check).strip():
         return default_return_doi
 
     doi_cleaned_lower = str(doi_to_check).lower().strip()
-    
-    if 'DOIs' in collection_df.columns and not collection_df.empty:
-        dois_coll_set = set(collection_df['DOIs'].dropna().astype(str).str.lower().str.strip())
-        if doi_cleaned_lower in dois_coll_set:
-            match_series = collection_df[collection_df['DOIs'].astype(str).str.lower().str.strip() == doi_cleaned_lower].iloc[0]
-            return [
-                "Dans la collection",
-                match_series.get('Titres', ''), 
-                match_series.get('Hal_ids', ''),
-                match_series.get('Types de dépôts', ''),
-                match_series.get('HAL Link', ''), 
-                match_series.get('HAL Ext ID', ''),
-                match_series.get('HAL_URI', '') 
-            ]
+
+    row = hal_lookup['doi_index'].get(doi_cleaned_lower)
+    if row:
+        return [
+            "Dans la collection",
+            row.get('Titres', ''),
+            row.get('Hal_ids', ''),
+            row.get('Types de dépôts', ''),
+            row.get('HAL Link', ''),
+            row.get('HAL Ext ID', ''),
+            row.get('HAL_URI', '')
+        ]
 
     solr_doi_query_val = escapeSolrArg(doi_cleaned_lower.replace("https://doi.org/", ""))
     
@@ -740,44 +787,57 @@ def check_df(input_df_to_check, hal_collection_df, progress_bar_st=None, progres
                 input_df_to_check[col_name] = pd.NA
         return input_df_to_check
 
-    df_to_process = input_df_to_check.copy() 
+    df_to_process = input_df_to_check.copy()
+
+    # Pré-calcul unique des index DOI/titre de la collection HAL (voir _build_hal_lookup) :
+    # évite de reconstruire un set/une recherche O(n) sur toute la collection à chaque ligne.
+    hal_lookup = _build_hal_lookup(hal_collection_df)
+
+    def _process_row(row_to_check):
+        doi_value_from_row = row_to_check.get('doi')
+        title_value_from_row = row_to_check.get('Title')
+
+        hal_status_result = ["Pas de DOI valide", "", "", "", "", "", ""]
+
+        if pd.notna(doi_value_from_row) and str(doi_value_from_row).strip():
+            hal_status_result = statut_doi(str(doi_value_from_row), hal_lookup)
+
+        if hal_status_result[0] not in ("Dans la collection", "Dans HAL mais hors de la collection"):
+            if pd.notna(title_value_from_row) and str(title_value_from_row).strip():
+                hal_status_result = statut_titre(str(title_value_from_row), hal_lookup)
+            elif not (pd.notna(doi_value_from_row) and str(doi_value_from_row).strip()):
+                hal_status_result = ["Données d'entrée insuffisantes (ni DOI ni Titre)", "", "", "", "", "", ""]
+
+        return hal_status_result
 
     statuts_hal_list = []
     titres_hal_list = []
     ids_hal_list = []
     types_depot_hal_list = []
-    links_hal_list = [] 
+    links_hal_list = []
     ext_ids_hal_list = []
-    hal_uris_list = [] 
+    hal_uris_list = []
 
+    rows_to_process = [row for _, row in df_to_process.iterrows()]
+    total_rows_to_process = len(rows_to_process)
 
-    total_rows_to_process = len(df_to_process)
-    for index, row_to_check in tqdm(df_to_process.iterrows(), total=total_rows_to_process, desc="Vérification HAL (check_df)"):
-        doi_value_from_row = row_to_check.get('doi') 
-        title_value_from_row = row_to_check.get('Title') 
+    # Les appels réseau vers l'API HAL (fallback quand la notice n'est pas trouvée
+    # localement) dominent le temps de cette étape : on les parallélise, comme c'est
+    # déjà fait pour Unpaywall et les permissions de dépôt plus loin dans le pipeline.
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        results_iter = executor.map(_process_row, rows_to_process)
+        for index, hal_status_result in enumerate(tqdm(results_iter, total=total_rows_to_process, desc="Vérification HAL (check_df)")):
+            statuts_hal_list.append(hal_status_result[0])
+            titres_hal_list.append(hal_status_result[1])
+            ids_hal_list.append(hal_status_result[2])
+            types_depot_hal_list.append(hal_status_result[3])
+            links_hal_list.append(hal_status_result[4])
+            ext_ids_hal_list.append(hal_status_result[5])
+            hal_uris_list.append(hal_status_result[6])
 
-        hal_status_result = ["Pas de DOI valide", "", "", "", "", "", ""] 
-        
-        if pd.notna(doi_value_from_row) and str(doi_value_from_row).strip():
-            hal_status_result = statut_doi(str(doi_value_from_row), hal_collection_df)
-        
-        if hal_status_result[0] not in ("Dans la collection", "Dans HAL mais hors de la collection"):
-            if pd.notna(title_value_from_row) and str(title_value_from_row).strip():
-                hal_status_result = statut_titre(str(title_value_from_row), hal_collection_df)
-            elif not (pd.notna(doi_value_from_row) and str(doi_value_from_row).strip()): 
-                hal_status_result = ["Données d'entrée insuffisantes (ni DOI ni Titre)", "", "", "", "", "", ""]
-        
-        statuts_hal_list.append(hal_status_result[0])
-        titres_hal_list.append(hal_status_result[1]) 
-        ids_hal_list.append(hal_status_result[2])
-        types_depot_hal_list.append(hal_status_result[3])
-        links_hal_list.append(hal_status_result[4]) 
-        ext_ids_hal_list.append(hal_status_result[5])
-        hal_uris_list.append(hal_status_result[6]) 
-        
-        if progress_bar_st is not None and progress_text_st is not None:
-            current_progress_val = (index + 1) / total_rows_to_process
-            progress_bar_st.progress(int(current_progress_val * 100))
+            if progress_bar_st is not None and progress_text_st is not None:
+                current_progress_val = (index + 1) / total_rows_to_process
+                progress_bar_st.progress(int(current_progress_val * 100))
 
     df_to_process['Statut_HAL'] = statuts_hal_list
     df_to_process['titre_HAL_si_trouvé'] = titres_hal_list
