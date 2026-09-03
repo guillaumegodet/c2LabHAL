@@ -186,27 +186,38 @@ def get_pubmed_data(query, max_items=10000):
         return []
 
     def _fetch_one_article(pmid):
-        try:
-            article = fetch.article_by_pmid(pmid)
-            pub_date_obj = article.history.get('pubmed') if article.history else None
-            pub_date_str = pub_date_obj.date().isoformat() if pub_date_obj and hasattr(pub_date_obj, 'date') else 'N/A'
-            return {
-                'Data source': 'pubmed',
-                'Title': article.title if article.title else "N/A",
-                'doi': article.doi if article.doi else None,
-                'id': pmid,
-                'Source title': article.journal if article.journal else "N/A",
-                'Date': pub_date_str
-            }, None
-        except Exception as e_article:
-            return {
-                'Data source': 'pubmed', 'Title': "Erreur de récupération", 'doi': None,
-                'id': pmid, 'Source title': "N/A", 'Date': "N/A"
-            }, (pmid, e_article)
+        # NCBI/metapub renvoie parfois une erreur "Invalid ID ... rejected by Eutils" pour
+        # un PMID pourtant valide lors d'un pic de charge/débit passager côté NCBI. On
+        # retente donc quelques fois avec un backoff avant d'abandonner, plutôt que
+        # d'échouer immédiatement sur ce qui est le plus souvent transitoire.
+        max_attempts = 4
+        last_error = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                article = fetch.article_by_pmid(pmid)
+                pub_date_obj = article.history.get('pubmed') if article.history else None
+                pub_date_str = pub_date_obj.date().isoformat() if pub_date_obj and hasattr(pub_date_obj, 'date') else 'N/A'
+                return {
+                    'Data source': 'pubmed',
+                    'Title': article.title if article.title else "N/A",
+                    'doi': article.doi if article.doi else None,
+                    'id': pmid,
+                    'Source title': article.journal if article.journal else "N/A",
+                    'Date': pub_date_str
+                }, None
+            except Exception as e_article:
+                last_error = e_article
+                if attempt < max_attempts:
+                    time.sleep(min(1.5 * attempt, 6))
+
+        return {
+            'Data source': 'pubmed', 'Title': "Erreur de récupération", 'doi': None,
+            'id': pmid, 'Source title': "N/A", 'Date': "N/A"
+        }, (pmid, last_error)
 
     # NCBI limite le débit à 3 req/s sans clé API, 10 req/s avec une clé (NCBI_API_KEY) :
     # on adapte le nombre de threads en conséquence pour paralléliser sans se faire limiter.
-    max_workers = 8 if os.environ.get('NCBI_API_KEY') else 3
+    max_workers = 6 if os.environ.get('NCBI_API_KEY') else 2
 
     data = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
