@@ -89,6 +89,7 @@ def main():
 
     if st.button("🚀 Lancer la recherche et la comparaison"):
         scopus_api_key_secret = st.secrets.get("SCOPUS_API_KEY")
+        openalex_api_key_secret = st.secrets.get("OPENALEX_API_KEY")
 
         if not openalex_institution_id and not pubmed_query_input and not scopus_lab_id:
             st.error("Veuillez configurer au moins une source de données (OpenAlex, PubMed ou Scopus).")
@@ -104,7 +105,7 @@ def main():
                 progress_text_area.info("Étape 1/9 : Récupération des données OpenAlex...")
                 progress_bar.progress(5)
                 openalex_query = f"authorships.institutions.id:{openalex_institution_id},publication_year:{start_year}-{end_year}"
-                openalex_data = get_openalex_data(openalex_query, max_items=5000) 
+                openalex_data = get_openalex_data(openalex_query, max_items=5000, api_key=openalex_api_key_secret)
                 if openalex_data:
                     openalex_df = convert_to_dataframe(openalex_data, 'openalex')
                     openalex_df['Source title'] = openalex_df.apply(

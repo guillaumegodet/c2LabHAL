@@ -206,6 +206,7 @@ def main():
     pubmed_query_labo_nantes = labo_selectionne_details_nantes.get('pubmed_query', '')
 
     scopus_api_key_secret_nantes = st.secrets.get("SCOPUS_API_KEY")
+    openalex_api_key_secret_nantes = st.secrets.get("OPENALEX_API_KEY")
 
     col1_dates_nantes, col2_dates_nantes = st.columns(2)
     with col1_dates_nantes:
@@ -242,7 +243,7 @@ def main():
                 progress_text_area_nantes.info("Étape 1/9 : Récupération des données OpenAlex...") # Corrigé
                 progress_bar_nantes.progress(5) # Corrigé
                 openalex_query_complet_nantes = f"authorships.institutions.id:{openalex_institution_id_nantes},publication_year:{start_year_nantes}-{end_year_nantes}"
-                openalex_data_nantes = get_openalex_data(openalex_query_complet_nantes, max_items=5000)
+                openalex_data_nantes = get_openalex_data(openalex_query_complet_nantes, max_items=5000, api_key=openalex_api_key_secret_nantes)
                 if openalex_data_nantes:
                     openalex_df_nantes = convert_to_dataframe(openalex_data_nantes, 'openalex')
                     openalex_df_nantes['Source title'] = openalex_df_nantes.apply(

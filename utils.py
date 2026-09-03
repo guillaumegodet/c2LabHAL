@@ -14,6 +14,7 @@ except Exception:
 if _pubmed_api_key and not os.environ.get('NCBI_API_KEY'):
     os.environ['NCBI_API_KEY'] = _pubmed_api_key
 
+import time
 import pandas as pd
 import requests
 import json
@@ -111,51 +112,66 @@ def get_scopus_data(api_key, query, max_items=10000):
 
     return results_json[:max_items]
 
-def get_openalex_data(query, max_items=10000):
+def get_openalex_data(query, max_items=10000, api_key=None):
     url = 'https://api.openalex.org/works'
-    email = "hal.dbm@listes.u-paris.fr" 
-    params = {'filter': query, 'per-page': 200, 'mailto': email} 
+    email = "hal.dbm@listes.u-paris.fr"
+    params = {'filter': query, 'per-page': 200, 'mailto': email}
+    if api_key:
+        params['api_key'] = api_key
     results_json = []
-    next_cursor = "*" 
+    next_cursor = "*"
 
-    retries = 3 
-    
+    retries = 5
+
     while len(results_json) < max_items:
         current_try = 0
-        if not next_cursor: 
+        if not next_cursor:
             break
-        
+
         params['cursor'] = next_cursor
 
         while current_try < retries:
             try:
-                resp = requests.get(url, params=params, timeout=30) 
-                resp.raise_for_status() 
+                resp = requests.get(url, params=params, timeout=30)
+                if resp.status_code == 429:
+                    current_try += 1
+                    # Respecte le délai indiqué par l'API si présent, sinon backoff exponentiel.
+                    retry_after = resp.headers.get('Retry-After')
+                    wait_s = float(retry_after) if retry_after and retry_after.isdigit() else min(2 ** current_try, 30)
+                    st.warning(f"OpenAlex : trop de requêtes (429), nouvelle tentative dans {wait_s:.0f}s ({current_try}/{retries})...")
+                    if current_try >= retries:
+                        st.error(f"Échec de la récupération des données OpenAlex après {retries} tentatives (limite de débit atteinte).")
+                        return results_json[:max_items]
+                    time.sleep(wait_s)
+                    continue
+                resp.raise_for_status()
                 data = resp.json()
-                
+
                 if 'results' in data:
                     results_json.extend(data['results'])
-                
+
                 next_cursor = data.get('meta', {}).get('next_cursor')
-                break 
-            
+                break
+
             except requests.exceptions.RequestException as e:
                 current_try += 1
                 st.warning(f"Erreur OpenAlex (tentative {current_try}/{retries}): {e}. Réessai...")
                 if current_try >= retries:
                     st.error(f"Échec de la récupération des données OpenAlex après {retries} tentatives.")
-                    return results_json[:max_items] 
+                    return results_json[:max_items]
+                time.sleep(min(2 ** current_try, 30))
             except json.JSONDecodeError:
                 current_try +=1
                 st.warning(f"Erreur de décodage JSON OpenAlex (tentative {current_try}/{retries}). Réessai...")
                 if current_try >= retries:
                     st.error("Échec du décodage JSON OpenAlex.")
                     return results_json[:max_items]
-        
-        if current_try >= retries: 
+                time.sleep(min(2 ** current_try, 30))
+
+        if current_try >= retries:
             break
-            
-    return results_json[:max_items] 
+
+    return results_json[:max_items]
 
 
 def get_pubmed_data(query, max_items=10000):
